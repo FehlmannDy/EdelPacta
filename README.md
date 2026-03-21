@@ -24,7 +24,15 @@ EdelPacta/
 
 ## Environment setup
 
-Copy `.env.example` to `.env` at the repo root and fill in each value:
+If you don't have an issuer wallet yet, run the init script — it generates a fresh XRPL wallet and funds it automatically via the devnet faucet:
+
+```bash
+bun scripts/init-wallet.ts
+```
+
+This writes `ISSUER_SEED` and `ISSUER_ADDRESS` into `.env` (creating the file if needed). You then only have to fill in the DID values manually (see table below).
+
+If you already have a wallet, copy `.env.example` instead:
 
 ```bash
 cp .env.example .env
