@@ -35,5 +35,5 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
 });
 
 app.listen(PORT, () => {
-  logger.info({ port: PORT, network: "wss://wasm.devnet.rippletest.net:51233" }, "server started");
+  logger.info({ port: PORT, network: process.env.XRPL_NETWORK ?? "wss://wasm.devnet.rippletest.net:51233" }, "server started");
 });

@@ -8,6 +8,8 @@ import {
   convertStringToHex,
 } from "xrpl";
 
+const DEFAULT_NETWORK = process.env.XRPL_NETWORK ?? "wss://wasm.devnet.rippletest.net:51233";
+
 // XLS-20 NFTokenMint flags
 export const NFTokenMintFlags = {
   tfBurnable: 0x00000001,     // Issuer can burn the NFT
@@ -47,7 +49,7 @@ export async function mintNFT(params: MintNFTParams): Promise<MintNFTResult> {
     taxon,
     transferFee = 0,
     flags = NFTokenMintFlags.tfTransferable,
-    networkUrl = "wss://wasm.devnet.rippletest.net:51233",
+    networkUrl = DEFAULT_NETWORK,
   } = params;
 
   const client = new Client(networkUrl);
@@ -327,8 +329,6 @@ export async function getAccountNFTs(account: string, networkUrl = DEFAULT_NETWO
 // Prepare (unsigned) + Submit (signed blob) — for frontend wallet signing
 // ---------------------------------------------------------------------------
 
-const DEFAULT_NETWORK = "wss://wasm.devnet.rippletest.net:51233";
-
 export interface PrepareMintParams {
   account: string;
   taxon: number;
@@ -509,7 +509,7 @@ export async function createTransferOffer(
     nftokenId,
     destination,
     amount = "0",
-    networkUrl = "wss://wasm.devnet.rippletest.net:51233",
+    networkUrl = DEFAULT_NETWORK,
   } = params;
 
   const client = new Client(networkUrl);
@@ -570,7 +570,7 @@ export async function acceptTransferOffer(
   const {
     seed,
     offerId,
-    networkUrl = "wss://wasm.devnet.rippletest.net:51233",
+    networkUrl = DEFAULT_NETWORK,
   } = params;
 
   const client = new Client(networkUrl);

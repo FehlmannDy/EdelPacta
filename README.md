@@ -38,13 +38,15 @@ If you already have a wallet, copy `.env.example` instead:
 cp .env.example .env
 ```
 
-| Variable | Description |
-|---|---|
-| `ISSUER_SEED` | XRPL wallet seed (`sEd…`) used by the backend to sign credentials |
-| `ISSUER_ADDRESS` | XRPL address matching the issuer seed (`r…`) |
-| `ISSUER_DID` | DID of the EdelPacta estate-credential issuer (swiyu trust infrastructure) |
-| `BETAID_ISSUER_DID` | DID of the betaid issuer for Swiss e-ID verification (swiyu trust infrastructure) |
-| `VITE_IPFS_GATEWAY` | Public IPFS gateway URL used by the frontends (e.g. `http://localhost:8080/ipfs`) |
+| Variable | Required | Description |
+|---|---|---|
+| `ISSUER_SEED` | yes | XRPL wallet seed (`sEd…`) used by the backend to sign credentials |
+| `ISSUER_ADDRESS` | yes | XRPL address matching the issuer seed (`r…`) |
+| `ISSUER_DID` | yes | DID of the EdelPacta estate-credential issuer (swiyu trust infrastructure) |
+| `BETAID_ISSUER_DID` | yes | DID of the betaid issuer for Swiss e-ID verification (swiyu trust infrastructure) |
+| `XRPL_NETWORK` | no | XRPL WebSocket node URL (default: `wss://wasm.devnet.rippletest.net:51233`) |
+| `VERIFIER_BASE_URL` | no | swiyu OID4VP verifier base URL (default: `https://beta-verifier.edel-id.ch`) |
+| `VITE_IPFS_GATEWAY` | no | Public IPFS gateway URL used by the frontends (default: `http://localhost:8080/ipfs`) |
 
 > **Important:** never commit `.env` — it contains the wallet seed. `.gitignore` already excludes it.
 

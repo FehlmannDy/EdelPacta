@@ -12,8 +12,8 @@ import { Client, Wallet } from "../backend/node_modules/xrpl/dist/npm/index.js";
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { resolve } from "path";
 
-const NETWORK = "wss://wasm.devnet.rippletest.net:51233";
-const FAUCET_URL = "https://faucet.devnet.rippletest.net/accounts";
+const NETWORK = process.env.XRPL_NETWORK ?? "wss://wasm.devnet.rippletest.net:51233";
+const FAUCET_URL = process.env.XRPL_FAUCET_URL ?? "https://faucet.devnet.rippletest.net/accounts";
 const ENV_PATH = resolve(import.meta.dir, "../.env");
 
 // ---------------------------------------------------------------------------

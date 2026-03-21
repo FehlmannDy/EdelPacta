@@ -1,6 +1,6 @@
 import { Client, Wallet, convertStringToHex, CredentialCreate, CredentialAccept, CredentialDelete } from "xrpl";
 
-const VERIFIER_BASE = "https://beta-verifier.edel-id.ch";
+const VERIFIER_BASE = process.env.VERIFIER_BASE_URL ?? "https://beta-verifier.edel-id.ch";
 
 function getBetaidIssuerDid(): string {
   const did = process.env.BETAID_ISSUER_DID;
@@ -49,7 +49,7 @@ function buildEidPresentationDefinition() {
 }
 
 
-const DEFAULT_NETWORK = "wss://wasm.devnet.rippletest.net:51233";
+const DEFAULT_NETWORK = process.env.XRPL_NETWORK ?? "wss://wasm.devnet.rippletest.net:51233";
 
 export const CREDENTIAL_TYPE_HEX = convertStringToHex("SWIYU_KYC");
 export const CREDENTIAL_TYPE_TAX_HEX = convertStringToHex("SWIYU_KYC_TAX");

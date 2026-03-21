@@ -1,7 +1,7 @@
 import { Client, Wallet } from "xrpl";
 
-const NETWORK = "wss://wasm.devnet.rippletest.net:51233";
-const FAUCET = "https://wasmfaucet.devnet.rippletest.net/accounts";
+const NETWORK = process.env.XRPL_NETWORK ?? "wss://wasm.devnet.rippletest.net:51233";
+const FAUCET = process.env.XRPL_FAUCET_URL ?? "https://faucet.devnet.rippletest.net/accounts";
 
 async function main() {
   const wallet = Wallet.generate();

@@ -21,6 +21,8 @@ services:
       - ISSUER_ADDRESS=${ISSUER_ADDRESS}
       - ISSUER_DID=${ISSUER_DID}
       - BETAID_ISSUER_DID=${BETAID_ISSUER_DID}
+      - XRPL_NETWORK=${XRPL_NETWORK:-wss://wasm.devnet.rippletest.net:51233}
+      - VERIFIER_BASE_URL=${VERIFIER_BASE_URL:-https://beta-verifier.edel-id.ch}
       - KUBO_URL=http://ipfs:5001
 
   notary:
