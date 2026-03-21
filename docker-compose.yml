@@ -1,20 +1,49 @@
 services:
+  ipfs:
+    image: ipfs/kubo:latest
+    ports:
+      - "4001:4001"
+      - "4001:4001/udp"
+      - "127.0.0.1:5001:5001"
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ipfs_data:/data/ipfs
+
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    ports:
-      - "8080:8080"
+    depends_on:
+      - ipfs
     environment:
       - NODE_ENV=production
+      - ISSUER_SEED=${ISSUER_SEED}
+      - ISSUER_ADDRESS=${ISSUER_ADDRESS}
+      - ISSUER_DID=${ISSUER_DID}
+      - BETAID_ISSUER_DID=${BETAID_ISSUER_DID}
+      - KUBO_URL=http://ipfs:5001
 
-  frontend:
+  notary:
     build:
-      context: ./frontend
+      context: ./frontends/notary
       dockerfile: Dockerfile
-    ports:
-      - "3000:3000"
+      args:
+        - VITE_IPFS_GATEWAY=${VITE_IPFS_GATEWAY}
     depends_on:
       - backend
-    environment:
-      - REACT_APP_API_URL=http://localhost:8080
+    ports:
+      - "3000:80"
+
+  vendor:
+    build:
+      context: ./frontends/vendor
+      dockerfile: Dockerfile
+      args:
+        - VITE_IPFS_GATEWAY=${VITE_IPFS_GATEWAY}
+    depends_on:
+      - backend
+    ports:
+      - "3001:80"
+
+volumes:
+  ipfs_data:
