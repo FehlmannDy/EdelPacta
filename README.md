@@ -45,10 +45,13 @@ cp .env.example .env
 ## Running with Docker (recommended)
 
 ```bash
-# Build and start all services
+# Build and start all services (logs printed to terminal, stop with CTRL+C)
 docker compose up --build
 
-# Stop
+# Or run in the background
+docker compose up --build -d
+
+# Stop background services
 docker compose down
 ```
 
