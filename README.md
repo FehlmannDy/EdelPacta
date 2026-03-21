@@ -95,11 +95,48 @@ docker run -p 4001:4001 -p 5001:5001 -p 8080:8080 ipfs/kubo:latest
 
 ---
 
+## Wallet requirement
+
+Both the notary and vendor UIs require the **Otsu wallet** browser extension to connect and sign XRPL transactions.
+
+- [Install for Chrome](https://chromewebstore.google.com/detail/otsu/aifpdkijgdmhbgdomhgfklhifcjaolne)
+- [Install for Firefox](https://addons.mozilla.org/firefox/addon/otsu-wallet/)
+
+Once installed, create or import an XRPL account and fund it on devnet before using the app.
+
+---
+
+## KYC flow (notary)
+
+Notaries must complete a single identity verification step before they can mint or transfer title deeds.
+
+1. **Connect** the Otsu wallet — the app checks on-chain whether a `SWIYU_KYC` credential already exists for the address.
+2. **Scan the QR code** displayed in the app using the Otsu wallet's built-in scanner. This triggers an OID4VP presentation request to the swiyu verifier for the notary's Swiss e-ID (`betaid-sdjwt` credential, including `personal_administrative_number`).
+3. **Wait for verification** — the backend polls the swiyu verifier every 2 seconds via SSE until it returns `SUCCESS`.
+4. **Credential issued** — the backend signs and submits a `CredentialCreate` transaction on XRPL, issuing the `SWIYU_KYC` credential to the notary's address.
+5. **Credential accepted** — the Otsu wallet automatically signs and submits a `CredentialAccept` transaction; the notary UI unlocks.
+
+If the credential is already present on-chain (e.g. after a page reload), steps 2–5 are skipped automatically.
+
+---
+
 ## KYC flow (vendor)
 
-Vendors must complete two verification steps before they can accept a property transfer:
+Vendors must complete two sequential verification steps before they can accept a property transfer.
 
-1. **Swiss e-ID** — scans a QR code in the [Otsu wallet](https://otsu.finance/) to present their betaid credential; the backend issues a `SWIYU_KYC` credential on XRPL.
-2. **Estate attestation** — scans a second QR code to present their estate fiscal credential; the backend issues a `SWIYU_KYC_TAX` credential on XRPL.
+### Step 1 — Swiss e-ID (`SWIYU_KYC`)
 
-Both credentials must be accepted on-chain by the vendor's wallet before the transfer UI unlocks.
+1. **Connect** the Otsu wallet — the app checks whether a `SWIYU_KYC` credential exists for the address.
+2. **Scan the QR code** using the Otsu wallet. This triggers an OID4VP request for the vendor's Swiss e-ID (`betaid-sdjwt`, including `personal_administrative_number`).
+3. **Wait for verification** — backend polls the swiyu verifier via SSE until `SUCCESS`.
+4. **Credential issued** — backend submits a `CredentialCreate` for `SWIYU_KYC` on XRPL.
+5. **Credential accepted** — Otsu wallet signs the `CredentialAccept` transaction.
+
+### Step 2 — Estate attestation (`SWIYU_KYC_TAX`)
+
+6. **Scan a second QR code** — this time the OID4VP request targets the vendor's estate fiscal credential (`estate` VC, including tax ID, income, residency status, etc.) issued by the EdelPacta issuer DID.
+7. **Wait for verification** — same SSE polling flow.
+8. **Credential issued** — backend submits a `CredentialCreate` for `SWIYU_KYC_TAX` on XRPL.
+9. **Credential accepted** — Otsu wallet signs the `CredentialAccept`; the vendor UI unlocks.
+
+Both credentials must be accepted on-chain before the transfer UI becomes available. Each step is skipped automatically if the credential already exists on-chain.
