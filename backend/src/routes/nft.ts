@@ -14,6 +14,7 @@ import {
   getIncomingOffers,
   getIncomingOffersForAccount,
   getOutgoingOffers,
+  getOfferDetails,
 } from "../services/xrplService";
 
 const router = Router();
@@ -371,6 +372,22 @@ router.get("/offers/outgoing/:address", async (req: Request, res: Response): Pro
     res.json({ offers });
   } catch (err) {
     logger.error({ address, err }, "nft: fetch outgoing offers failed");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+  }
+});
+
+/**
+ * GET /api/nft/offer/:offerId
+ * Returns offer details (sequence, nftokenId, destination) for a given NFTokenOffer ID.
+ */
+router.get("/offer/:offerId", async (req: Request, res: Response): Promise<void> => {
+  const { offerId } = req.params;
+  const networkUrl = req.query["networkUrl"] as string | undefined;
+  try {
+    const details = await getOfferDetails(offerId, networkUrl);
+    res.json(details);
+  } catch (err) {
+    logger.error({ offerId, err }, "nft: get offer details failed");
     res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
   }
 });

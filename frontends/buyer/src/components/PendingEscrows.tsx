@@ -44,9 +44,10 @@ function getNftId(escrow: EscrowObject): string | null {
 
 interface Props {
   address: string;
+  onResume?: (escrow: EscrowObject) => void;
 }
 
-export function PendingEscrows({ address }: Props) {
+export function PendingEscrows({ address, onResume }: Props) {
   const [escrows, setEscrows] = useState<EscrowObject[]>([]);
   const [loading, setLoading] = useState(false);
   const [initialLoad, setInitialLoad] = useState(true);
@@ -91,7 +92,7 @@ export function PendingEscrows({ address }: Props) {
         </div>
       ) : (
         escrows.map((e) => {
-          const nftId = getNftId(e);
+          const nftId = e.NftId ?? getNftId(e);
           return (
             <div key={e.Sequence} className="result">
               <p><strong>Escrow Account</strong><br /><Copyable text={e.Account} truncate={12} /></p>
@@ -100,6 +101,15 @@ export function PendingEscrows({ address }: Props) {
               {nftId && <p><strong>NFT ID</strong><br /><Copyable text={nftId} truncate={12} /></p>}
               {e.CancelAfter && (
                 <p><strong>Expires</strong><br />{formatExpiry(e.CancelAfter)}</p>
+              )}
+              {onResume && (
+                <button
+                  className="btn-secondary"
+                  style={{ fontSize: "0.75rem", marginTop: "0.25rem" }}
+                  onClick={() => onResume(e)}
+                >
+                  Resume →
+                </button>
               )}
             </div>
           );

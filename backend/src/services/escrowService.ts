@@ -453,7 +453,9 @@ export async function getEscrowsByBuyer(buyerAddress: string): Promise<Record<st
       (txResponse.result as Record<string, unknown>)["transactions"] as Record<string, unknown>[]
     ) ?? [];
 
-    const matchingSequences: number[] = [];
+    const nftIdMemoType = toHex("NFT_ID").toUpperCase();
+    const matchingEscrows: Array<{ seq: number; nftId: string | null }> = [];
+
     for (const entry of transactions) {
       const tx = (entry["tx"] ?? entry["tx_json"]) as Record<string, unknown> | undefined;
       if (!tx) continue;
@@ -467,16 +469,18 @@ export async function getEscrowsByBuyer(buyerAddress: string): Promise<Record<st
           m.Memo.MemoType?.toUpperCase() === buyerMemoType &&
           m.Memo.MemoData?.toUpperCase() === buyerMemoData
       );
-      if (hasBuyer) {
-        matchingSequences.push(tx["Sequence"] as number);
-      }
+      if (!hasBuyer) continue;
+
+      const nftIdMemo = memos.find((m) => m.Memo.MemoType?.toUpperCase() === nftIdMemoType);
+      const nftId = nftIdMemo?.Memo.MemoData?.toUpperCase() ?? null;
+      matchingEscrows.push({ seq: tx["Sequence"] as number, nftId });
     }
 
-    if (matchingSequences.length === 0) return [];
+    if (matchingEscrows.length === 0) return [];
 
     // 2 — For each matching sequence, fetch the live escrow object (may no longer exist if finished/cancelled)
     const results: Record<string, unknown>[] = [];
-    for (const seq of matchingSequences) {
+    for (const { seq, nftId } of matchingEscrows) {
       try {
         const entry = await client.request({
           command: "ledger_entry",
@@ -484,7 +488,7 @@ export async function getEscrowsByBuyer(buyerAddress: string): Promise<Record<st
           ledger_index: "validated",
         });
         const node = (entry.result as Record<string, unknown>)["node"] as Record<string, unknown>;
-        if (node) results.push(node);
+        if (node) results.push({ ...node, NftId: nftId });
       } catch (_) {
         // Escrow already finished or cancelled — skip
       }

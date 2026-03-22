@@ -7,6 +7,7 @@ import {
   NFTokenAcceptOffer,
   convertStringToHex,
 } from "xrpl";
+import logger from "../logger";
 
 const DEFAULT_NETWORK = process.env.XRPL_NETWORK ?? "wss://wasm.devnet.rippletest.net:51233";
 
@@ -125,6 +126,7 @@ export interface NFTOffer {
   destination: string | null;
   expiration: number | null;
   isSellOffer: boolean;
+  sequence?: number;
 }
 
 export async function getIncomingOffers(address: string, nftokenId: string, networkUrl = DEFAULT_NETWORK): Promise<NFTOffer[]> {
@@ -136,19 +138,74 @@ export async function getIncomingOffers(address: string, nftokenId: string, netw
       });
 
       const offers = (response.result.offers ?? []) as Record<string, unknown>[];
+      const filtered = offers.filter((o) => !o["destination"] || o["destination"] === address);
 
-      // Keep offers with no destination (open) or destination = this address
-      return offers
-        .filter((o) => !o["destination"] || o["destination"] === address)
-        .map((o) => ({
-          offerId: o["nft_offer_index"] as string,
+      logger.info({ nftokenId, buyer: address, rawOfferCount: offers.length, filteredCount: filtered.length }, "xrpl: getIncomingOffers — raw offers fetched");
+
+      const result: NFTOffer[] = [];
+      for (const o of filtered) {
+        const offerId = o["nft_offer_index"] as string;
+        const owner = o["owner"] as string;
+        let sequence: number | undefined;
+
+        // Resolve Sequence by scanning the seller's NFTokenCreateOffer transactions.
+        // account_objects(type:"nft_offer") is unreliable on some devnets; account_tx is universal.
+        try {
+          const txResp = await client.request({
+            command: "account_tx",
+            account: owner,
+            ledger_index_min: -1,
+            ledger_index_max: -1,
+            limit: 200,
+            forward: false,
+          });
+          const transactions = ((txResp.result as Record<string, unknown>)["transactions"] ?? []) as Record<string, unknown>[];
+          logger.info({ owner, offerId, txCount: transactions.length }, "xrpl: scanning seller account_tx for NFTokenCreateOffer");
+
+          for (const entry of transactions) {
+            const tx = (entry["tx"] ?? entry["tx_json"]) as Record<string, unknown> | undefined;
+            const meta = (entry["meta"] ?? entry["metadata"]) as Record<string, unknown> | undefined;
+            if (tx?.["TransactionType"] !== "NFTokenCreateOffer") continue;
+            if ((meta?.["TransactionResult"] as string) !== "tesSUCCESS") continue;
+            // Must be a sell offer (Flags bit 1)
+            if (!((tx["Flags"] as number) & 1)) continue;
+            // Must be for this NFT
+            if ((tx["NFTokenID"] as string)?.toUpperCase() !== nftokenId.toUpperCase()) continue;
+            // If destination is set, must match the buyer
+            if (tx["Destination"] && (tx["Destination"] as string) !== address) continue;
+            // Verify the offer ID matches via AffectedNodes
+            const affectedNodes = (meta?.["AffectedNodes"] as Record<string, unknown>[]) ?? [];
+            const offerNode = affectedNodes.find((n) => {
+              const created = (n["CreatedNode"] as Record<string, unknown> | undefined);
+              return created?.["LedgerEntryType"] === "NFTokenOffer" &&
+                (created?.["LedgerIndex"] as string)?.toUpperCase() === offerId.toUpperCase();
+            });
+            if (!offerNode) continue;
+            sequence = tx["Sequence"] as number;
+            logger.info({ offerId, owner, sequence }, "xrpl: offer sequence resolved via account_tx");
+            break;
+          }
+
+          if (sequence == null) {
+            logger.warn({ offerId, owner, nftokenId }, "xrpl: could not resolve sequence — no matching NFTokenCreateOffer found");
+          }
+        } catch (err) {
+          logger.error({ offerId, owner, err }, "xrpl: account_tx failed while resolving offer sequence");
+        }
+
+        result.push({
+          offerId,
           nftokenId,
-          owner: o["owner"] as string,
+          owner,
           amount: String(o["amount"] ?? "0"),
           destination: (o["destination"] as string) ?? null,
           expiration: (o["expiration"] as number) ?? null,
           isSellOffer: true,
-        }));
+          sequence,
+        });
+      }
+      logger.info({ nftokenId, resultCount: result.length, sequences: result.map((r) => ({ offerId: r.offerId, sequence: r.sequence })) }, "xrpl: getIncomingOffers — returning");
+      return result;
     });
   } catch (err: unknown) {
     // objectNotFound means no offers exist for this NFToken
@@ -158,6 +215,31 @@ export async function getIncomingOffers(address: string, nftokenId: string, netw
     }
     throw err;
   }
+}
+
+export async function getOfferDetails(
+  offerId: string,
+  networkUrl = DEFAULT_NETWORK
+): Promise<{ offerId: string; sequence: number; nftokenId: string; destination: string | null }> {
+  // nft_sell_offers returns the offer owner; then account_objects on that owner gives us Sequence.
+  // We first need to find which NFT this offer belongs to, so we do a broader account_objects scan.
+  return withClient(networkUrl, async (client) => {
+    // Fetch all NFT sell offers for the offer owner — requires knowing the owner first.
+    // Use nft_sell_offers is NFT-scoped, so we need to scan account_objects directly.
+    // Strategy: treat offerId as a ledger object index and query via ledger_entry (object form).
+    const entry = await client.request({
+      command: "ledger_entry",
+      index: offerId,
+      ledger_index: "validated",
+    });
+    const node = (entry.result as Record<string, unknown>)["node"] as Record<string, unknown>;
+    return {
+      offerId,
+      sequence: node["Sequence"] as number,
+      nftokenId: node["NFTokenID"] as string,
+      destination: (node["Destination"] as string) ?? null,
+    };
+  });
 }
 
 export interface PendingOffer {

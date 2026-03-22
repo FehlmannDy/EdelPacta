@@ -55,6 +55,13 @@ export interface IncomingOffer {
   expiration: number | null;
 }
 
+export interface OfferDetails {
+  offerId: string;
+  sequence: number;
+  nftokenId: string;
+  destination: string | null;
+}
+
 export const nftApi = {
   prepareMint: (params: {
     account: string;
@@ -100,5 +107,13 @@ export const nftApi = {
         const data = await r.json() as { offers?: IncomingOffer[]; error?: string };
         if (!r.ok) throw new Error(data.error ?? "Failed to fetch incoming offers");
         return data.offers ?? [];
+      }),
+
+  getOffer: (offerId: string) =>
+    fetch(`/api/nft/offer/${offerId}`)
+      .then(async (r) => {
+        const data = await r.json() as OfferDetails & { error?: string };
+        if (!r.ok) throw new Error(data.error ?? "Failed to fetch offer details");
+        return data as OfferDetails;
       }),
 };

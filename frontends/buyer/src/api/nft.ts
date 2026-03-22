@@ -11,9 +11,34 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return data as T;
 }
 
+async function get<T>(path: string): Promise<T> {
+  const res = await fetch(`${BASE}${path}`);
+  const data = await res.json();
+  if (!res.ok) throw new Error((data as { error?: string }).error ?? `Request failed: ${res.status}`);
+  return data as T;
+}
+
 export interface SubmitResult {
   txHash: string;
   result: string;
+}
+
+export interface IncomingOffer {
+  offerId: string;
+  nftokenId: string;
+  owner: string;
+  amount: string;
+  expiration: number | null;
+}
+
+export interface NFTOffer {
+  offerId: string;
+  nftokenId: string;
+  owner: string;
+  amount: string;
+  destination: string | null;
+  expiration: number | null;
+  sequence?: number;
 }
 
 export const nftApi = {
@@ -22,4 +47,15 @@ export const nftApi = {
 
   submit: (txBlob: string) =>
     post<SubmitResult>("/submit", { txBlob }),
+
+  incomingOffersForAccount: (address: string) =>
+    get<{ offers: IncomingOffer[] }>(`/offers/incoming-for-account/${address}`)
+      .then((r) => r.offers),
+
+  incomingOffersForNft: (buyerAddress: string, nftokenId: string) =>
+    get<{ offers: NFTOffer[] }>(`/offers/incoming/${buyerAddress}/${nftokenId}`)
+      .then((r) => r.offers),
+
+  getOffer: (offerId: string) =>
+    get<{ offerId: string; sequence: number; nftokenId: string; destination: string | null }>(`/offer/${offerId}`),
 };

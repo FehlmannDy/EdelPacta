@@ -1,9 +1,7 @@
 export { walletLog, kycLog } from "@shared/logger";
 
-const isDev = import.meta.env.DEV;
-
+// Always log — needed for production Docker builds (isDev is false after vite build)
 function fmt(level: string, scope: string, msg: string, data?: unknown) {
-  if (!isDev) return;
   const prefix = `[${scope}:${level}]`;
   data !== undefined ? console.log(prefix, msg, data) : console.log(prefix, msg);
 }

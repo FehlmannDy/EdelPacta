@@ -2,7 +2,6 @@ import { useState, useRef } from "react";
 import { useWallet } from "@shared/hooks/useWallet";
 import { WalletBar } from "@shared/components/WalletBar";
 import { KYCGate } from "./components/KYCGate";
-import { Vendor } from "./components/Vendor";
 import { OwnedNFTs, OwnedNFTsHandle } from "./components/OwnedNFTs";
 import { IncomingOffers, IncomingOffersHandle } from "./components/IncomingOffers";
 import { KYCStep } from "./hooks/useKYC";
@@ -37,6 +36,7 @@ export default function App() {
   const [resetError, setResetError] = useState<string | null>(null);
   const ownedRef = useRef<OwnedNFTsHandle>(null);
   const incomingRef = useRef<IncomingOffersHandle>(null);
+
 
   const handleResetKYC = async () => {
     if (!wallet.address || resettingKYC) return;
@@ -104,11 +104,6 @@ export default function App() {
               address={wallet.address!}
               sign={wallet.sign}
               onAccepted={() => ownedRef.current?.load()}
-            />
-            <Vendor
-              address={wallet.address!}
-              sign={wallet.sign}
-              onAccepted={() => { ownedRef.current?.load(); incomingRef.current?.load(); }}
             />
           </KYCGate>
         )}

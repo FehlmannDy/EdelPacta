@@ -17,7 +17,7 @@ export function EscrowCreate({ buyerAddress, sign, onCreated }: Props) {
   const { addToast } = useToast();
   const [sellerAddress, setSellerAddress] = useState("");
   const [nftId, setNftId] = useState("");
-  const [amountXrp, setAmountRlusd] = useState("");
+  const [amountXrp, setAmountXrp] = useState("");
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState(-1);
   const [result, setResult] = useState<(CreateEscrowResult & { nftId: string; amountXrp: number }) | null>(null);
@@ -164,7 +164,7 @@ export function EscrowCreate({ buyerAddress, sign, onCreated }: Props) {
             min="0.01"
             step="0.01"
             value={amountXrp}
-            onChange={(e) => setAmountRlusd(e.target.value)}
+            onChange={(e) => setAmountXrp(e.target.value)}
             disabled={loading}
             style={{ paddingRight: "4.5rem" }}
           />

@@ -41,6 +41,7 @@ export interface EscrowObject {
   Amount: string; // XRP drops
   Sequence: number;
   CancelAfter?: number; // Ripple epoch seconds
+  NftId?: string; // NFT token ID extracted from the EscrowCreate transaction memo
   Memos?: Array<{ Memo: { MemoType?: string; MemoData?: string } }>;
   [key: string]: unknown;
 }
@@ -64,9 +65,6 @@ export const escrowApi = {
 
   finish: (params: { escrowSequence: number; nftId: string; offerSequence: number }) =>
     post<FinishEscrowResult>("/finish", params),
-
-  pending: (address: string) =>
-    get<{ escrows: EscrowObject[] }>(`/pending/${address}`),
 
   byBuyer: (address: string) =>
     get<{ escrows: EscrowObject[] }>(`/by-buyer/${address}`),

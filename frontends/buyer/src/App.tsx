@@ -63,6 +63,19 @@ export default function App() {
     setEscrowResult(null);
   };
 
+  const handleResumeEscrow = (escrow: import("./api/escrow").EscrowObject) => {
+    const result: CreateEscrowResult & { nftId: string; amountXrp: number } = {
+      escrowSequence: escrow.Sequence,
+      hash: "",
+      escrowAccount: escrow.Account,
+      buyerAddress: wallet.address!,
+      cancelAfter: escrow.CancelAfter ?? 0,
+      nftId: escrow.NftId ?? "",
+      amountXrp: parseInt(escrow.Amount, 10) / 1_000_000,
+    };
+    handleEscrowCreated(result);
+  };
+
   const handleResetKYC = async () => {
     if (!wallet.address || resettingKYC) return;
     setResettingKYC(true);
@@ -160,6 +173,7 @@ export default function App() {
             {flowStep === "accept" && wallet.address && (
               <AcceptNft
                 buyerAddress={wallet.address}
+                nftId={escrowResult?.nftId}
                 sign={wallet.sign}
                 onAccepted={handleNftAccepted}
               />
@@ -179,7 +193,7 @@ export default function App() {
             )}
 
             {wallet.address && (
-              <PendingEscrows address={wallet.address} />
+              <PendingEscrows address={wallet.address} onResume={handleResumeEscrow} />
             )}
 
             {wallet.address && (
