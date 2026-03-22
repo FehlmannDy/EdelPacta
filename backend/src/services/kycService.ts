@@ -1,4 +1,5 @@
-import { Client, Wallet, convertStringToHex, CredentialCreate, CredentialAccept, CredentialDelete } from "xrpl";
+import { Wallet, convertStringToHex, CredentialCreate, CredentialAccept, CredentialDelete } from "xrpl";
+import { withClient } from "./xrplService";
 
 const VERIFIER_BASE = process.env.VERIFIER_BASE_URL ?? "https://beta-verifier.edel-id.ch";
 
@@ -165,56 +166,53 @@ export async function checkCredentialStatus(
   networkUrl = DEFAULT_NETWORK
 ): Promise<CredentialStatus> {
   const issuerAddress = getIssuerAddress();
-  const client = new Client(networkUrl);
-  await client.connect();
-
   try {
-    // Check which credential types are already accepted on subject's account
-    const subjectRes = await client.request({
-      command: "account_objects",
-      account: subjectAddress,
-      type: "credential",
-    });
-    const subjectObjects = subjectRes.result.account_objects as Record<string, unknown>[];
+    return await withClient(networkUrl, async (client) => {
+      // Check which credential types are already accepted on subject's account
+      const subjectRes = await client.request({
+        command: "account_objects",
+        account: subjectAddress,
+        type: "credential",
+      });
+      const subjectObjects = subjectRes.result.account_objects as Record<string, unknown>[];
 
-    const acceptedTypes = credentialTypes.filter((credType) =>
-      subjectObjects.some(
-        (obj) =>
-          obj["LedgerEntryType"] === "Credential" &&
-          obj["Issuer"] === issuerAddress &&
-          obj["CredentialType"] === credType &&
-          ((obj["Flags"] as number) & LSF_ACCEPTED) !== 0
-      )
-    );
-    if (acceptedTypes.length === credentialTypes.length) return "accepted";
-
-    // Check issuer's account for credentials pending acceptance by subject
-    const issuerRes = await client.request({
-      command: "account_objects",
-      account: issuerAddress,
-      type: "credential",
-    });
-    const issuerObjects = issuerRes.result.account_objects as Record<string, unknown>[];
-
-    const hasPending = credentialTypes.some(
-      (credType) =>
-        !acceptedTypes.includes(credType) &&
-        issuerObjects.some(
+      const acceptedTypes = credentialTypes.filter((credType) =>
+        subjectObjects.some(
           (obj) =>
             obj["LedgerEntryType"] === "Credential" &&
-            obj["Subject"] === subjectAddress &&
+            obj["Issuer"] === issuerAddress &&
             obj["CredentialType"] === credType &&
-            ((obj["Flags"] as number) & LSF_ACCEPTED) === 0
+            ((obj["Flags"] as number) & LSF_ACCEPTED) !== 0
         )
-    );
-    if (hasPending) return "pending_acceptance";
+      );
+      if (acceptedTypes.length === credentialTypes.length) return "accepted" as CredentialStatus;
 
-    return "none";
+      // Check issuer's account for credentials pending acceptance by subject
+      const issuerRes = await client.request({
+        command: "account_objects",
+        account: issuerAddress,
+        type: "credential",
+      });
+      const issuerObjects = issuerRes.result.account_objects as Record<string, unknown>[];
+
+      const hasPending = credentialTypes.some(
+        (credType) =>
+          !acceptedTypes.includes(credType) &&
+          issuerObjects.some(
+            (obj) =>
+              obj["LedgerEntryType"] === "Credential" &&
+              obj["Subject"] === subjectAddress &&
+              obj["CredentialType"] === credType &&
+              ((obj["Flags"] as number) & LSF_ACCEPTED) === 0
+          )
+      );
+      if (hasPending) return "pending_acceptance" as CredentialStatus;
+
+      return "none" as CredentialStatus;
+    });
   } catch {
     // Amendment not active or account not found — treat as none
     return "none";
-  } finally {
-    await client.disconnect();
   }
 }
 
@@ -228,10 +226,7 @@ export async function issueCredential(
   networkUrl = DEFAULT_NETWORK
 ): Promise<{ txHash: string }> {
   const issuer = getIssuerWallet();
-  const client = new Client(networkUrl);
-  await client.connect();
-
-  try {
+  return withClient(networkUrl, async (client) => {
     let lastHash = "";
     for (const credType of credentialTypes) {
       const tx: CredentialCreate = {
@@ -254,9 +249,7 @@ export async function issueCredential(
       lastHash = signed.hash;
     }
     return { txHash: lastHash };
-  } finally {
-    await client.disconnect();
-  }
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -269,10 +262,7 @@ export async function deleteCredentials(
   networkUrl = DEFAULT_NETWORK
 ): Promise<void> {
   const issuer = getIssuerWallet();
-  const client = new Client(networkUrl);
-  await client.connect();
-
-  try {
+  return withClient(networkUrl, async (client) => {
     for (const credType of credentialTypes) {
       const tx: CredentialDelete = {
         TransactionType: "CredentialDelete",
@@ -296,9 +286,7 @@ export async function deleteCredentials(
         if (!msg.includes("tecNO_ENTRY") && !msg.includes("not found")) throw err;
       }
     }
-  } finally {
-    await client.disconnect();
-  }
+  });
 }
 
 export async function prepareAcceptCredential(
@@ -307,10 +295,7 @@ export async function prepareAcceptCredential(
   networkUrl = DEFAULT_NETWORK
 ): Promise<Record<string, unknown>[]> {
   const issuer = getIssuerWallet();
-  const client = new Client(networkUrl);
-  await client.connect();
-
-  try {
+  return withClient(networkUrl, async (client) => {
     // Only prepare TXes for credentials that are actually pending (on issuer, not yet accepted)
     const issuerRes = await client.request({
       command: "account_objects",
@@ -340,7 +325,5 @@ export async function prepareAcceptCredential(
       txs.push(await client.autofill(tx) as unknown as Record<string, unknown>);
     }
     return txs;
-  } finally {
-    await client.disconnect();
-  }
+  });
 }

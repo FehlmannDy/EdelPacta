@@ -1,22 +1,14 @@
 import { useEffect, useImperativeHandle, forwardRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { nftApi, PendingOffer } from "../api/nft";
-import { nftLog } from "../logger";
-import { Copyable } from "./Copyable";
-import { translateXrplError } from "../utils/xrplErrors";
+import { nftLog } from "@shared/logger";
+import { Copyable } from "@shared/components/Copyable";
+import { SkeletonCard } from "@shared/components/SkeletonCard";
+import { translateXrplError } from "@shared/utils/xrplErrors";
+import { xrplEpochToDate } from "@shared/utils/xrplEpoch";
 
 interface Props { address: string; }
 export interface PendingOffersHandle { load: () => void; }
-
-function SkeletonCard() {
-  return (
-    <div className="skeleton-card">
-      <div className="skeleton skeleton-line skeleton-line--short" />
-      <div className="skeleton skeleton-line skeleton-line--long" />
-      <div className="skeleton skeleton-line skeleton-line--medium" />
-    </div>
-  );
-}
 
 export const PendingOffers = forwardRef<PendingOffersHandle, Props>(function PendingOffers({ address }, ref) {
   const [offers, setOffers] = useState<PendingOffer[]>([]);
@@ -83,7 +75,7 @@ export const PendingOffers = forwardRef<PendingOffersHandle, Props>(function Pen
           )}
           {offer.expiration && (
             <p style={{ fontSize: "0.72rem", color: "#8a7a68", fontFamily: "system-ui" }}>
-              Expires {new Date((offer.expiration + 946684800) * 1000).toLocaleString()}
+              Expires {xrplEpochToDate(offer.expiration).toLocaleString()}
             </p>
           )}
           <button

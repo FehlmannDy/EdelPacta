@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
-import { useWallet } from "./hooks/useWallet";
-import { WalletBar } from "./components/WalletBar";
+import { useWallet } from "@shared/hooks/useWallet";
+import { WalletBar } from "@shared/components/WalletBar";
 import { KYCGate } from "./components/KYCGate";
 import { NFTList, NFTListHandle } from "./components/NFTList";
 import { MintForm } from "./components/MintForm";

@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { nftApi, SubmitResult } from "../api/nft";
-import { nftLog } from "../logger";
-import { Copyable } from "./Copyable";
-import { Stepper } from "./Stepper";
-import { useToast } from "../context/ToastContext";
-import { translateXrplError } from "../utils/xrplErrors";
+import { nftLog } from "@shared/logger";
+import { Copyable } from "@shared/components/Copyable";
+import { Stepper } from "@shared/components/Stepper";
+import { useToast } from "@shared/context/ToastContext";
+import { translateXrplError } from "@shared/utils/xrplErrors";
+import { TX_STEPS } from "../constants";
 
 interface Props {
   address: string;
@@ -12,7 +13,6 @@ interface Props {
   onMinted?: () => void;
 }
 
-const TX_STEPS = ["Prepare", "Sign", "Submit"];
 
 export function MintForm({ address, sign, onMinted }: Props) {
   const { addToast } = useToast();

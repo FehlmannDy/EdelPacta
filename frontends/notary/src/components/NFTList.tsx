@@ -2,12 +2,14 @@ import { useState, useEffect, useImperativeHandle, forwardRef, useRef } from "re
 import { QRCodeSVG } from "qrcode.react";
 import { nftApi, NFToken } from "../api/nft";
 import { kycApi, CredentialStatus } from "../api/kyc";
-import { nftLog } from "../logger";
-import { Copyable } from "./Copyable";
-import { Stepper } from "./Stepper";
-import { Modal } from "./Modal";
-import { useToast } from "../context/ToastContext";
-import { translateXrplError } from "../utils/xrplErrors";
+import { nftLog } from "@shared/logger";
+import { Copyable } from "@shared/components/Copyable";
+import { Stepper } from "@shared/components/Stepper";
+import { Modal } from "@shared/components/Modal";
+import { SkeletonCard } from "@shared/components/SkeletonCard";
+import { useToast } from "@shared/context/ToastContext";
+import { translateXrplError } from "@shared/utils/xrplErrors";
+import { TX_STEPS } from "../constants";
 
 interface Props {
   address: string;
@@ -26,18 +28,6 @@ const FLAG_LABELS: Record<number, string> = {
 
 function parseFlags(flags: number): string[] {
   return Object.entries(FLAG_LABELS).filter(([hex]) => flags & parseInt(hex)).map(([, l]) => l);
-}
-
-const TX_STEPS = ["Prepare", "Sign", "Submit"];
-
-function SkeletonCard() {
-  return (
-    <div className="skeleton-card">
-      <div className="skeleton skeleton-line skeleton-line--medium" />
-      <div className="skeleton skeleton-line skeleton-line--long" />
-      <div className="skeleton skeleton-line skeleton-line--short" />
-    </div>
-  );
 }
 
 interface TransferRowProps {

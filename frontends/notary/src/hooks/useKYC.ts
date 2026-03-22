@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { kycApi, CredentialStatus } from "../api/kyc";
-import { kycLog } from "../logger";
+import { kycLog } from "@shared/logger";
+import { readSSEStream } from "@shared/utils/readSSEStream";
 
 export type KYCStep =
   | "checking"
@@ -16,38 +17,6 @@ export interface KYCState {
   verificationUrl: string | null;
   streamState: string | null; // live state label from verifier ("PENDING", "PROCESSING", etc.)
   error: string | null;
-}
-
-// Mirror the JS demo: read a fetch response body as SSE chunks,
-// parse "data: {...}" lines, and yield parsed JSON events.
-async function* readSSEStream(
-  response: Response
-): AsyncGenerator<Record<string, unknown>> {
-  if (!response.body) return;
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    const chunk = decoder.decode(value);
-    const lines = chunk.split("\n");
-
-    for (const line of lines) {
-      if (line.startsWith("data:")) {
-        const jsonData = line.substring(5).trim();
-        if (jsonData) {
-          try {
-            yield JSON.parse(jsonData) as Record<string, unknown>;
-          } catch {
-            // malformed JSON — skip
-          }
-        }
-      }
-    }
-  }
 }
 
 export function useKYC(

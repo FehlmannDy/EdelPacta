@@ -1,17 +1,17 @@
 import { useState, useEffect, forwardRef, useImperativeHandle } from "react";
 import { nftApi, NFToken } from "../api/nft";
-import { Copyable } from "./Copyable";
-import { Stepper } from "./Stepper";
-import { Modal } from "./Modal";
-import { useToast } from "../context/ToastContext";
-import { translateXrplError } from "../utils/xrplErrors";
+import { Copyable } from "@shared/components/Copyable";
+import { Stepper } from "@shared/components/Stepper";
+import { Modal } from "@shared/components/Modal";
+import { SkeletonCard } from "@shared/components/SkeletonCard";
+import { useToast } from "@shared/context/ToastContext";
+import { translateXrplError } from "@shared/utils/xrplErrors";
+import { TX_STEPS } from "../constants";
 
 interface Props {
   address: string;
   sign: (tx: Record<string, unknown>) => Promise<string>;
 }
-
-const TX_STEPS = ["Prepare", "Sign", "Submit"];
 
 function BurnButton({ nft, address, sign, onDone }: { nft: NFToken; address: string; sign: (tx: Record<string, unknown>) => Promise<string>; onDone: () => void }) {
   const { addToast } = useToast();
@@ -67,16 +67,6 @@ function BurnButton({ nft, address, sign, onDone }: { nft: NFToken; address: str
 }
 
 export interface OwnedNFTsHandle { load: () => void; }
-
-function SkeletonCard() {
-  return (
-    <div className="skeleton-card">
-      <div className="skeleton skeleton-line skeleton-line--medium" />
-      <div className="skeleton skeleton-line skeleton-line--long" />
-      <div className="skeleton skeleton-line skeleton-line--short" />
-    </div>
-  );
-}
 
 export const OwnedNFTs = forwardRef<OwnedNFTsHandle, Props>(function OwnedNFTs({ address, sign }, ref) {
   const [nfts, setNfts] = useState<NFToken[]>([]);
