@@ -12,7 +12,7 @@ services:
       - "4001:4001"
       - "4001:4001/udp"
       - "127.0.0.1:5001:5001"
-      - "127.0.0.1:8090:8080"
+      - "8091:8080"
     volumes:
       - ipfs_data:/data/ipfs
 
@@ -26,7 +26,7 @@ services:
       contract-builder:
         condition: service_completed_successfully
     ports:
-      - "127.0.0.1:8080:8080"
+      - "8081:8080"
     environment:
       - NODE_ENV=production
       - ISSUER_SEED=${ISSUER_SEED}
@@ -51,7 +51,7 @@ services:
     depends_on:
       - backend
     ports:
-      - "127.0.0.1:3000:80"
+      - "3000:80"
 
   vendor:
     build:
@@ -62,7 +62,7 @@ services:
     depends_on:
       - backend
     ports:
-      - "127.0.0.1:3001:80"
+      - "3001:80"
 
   buyer:
     build:
@@ -73,7 +73,7 @@ services:
     depends_on:
       - backend
     ports:
-      - "127.0.0.1:3002:80"
+      - "3002:80"
 
 volumes:
   ipfs_data:
