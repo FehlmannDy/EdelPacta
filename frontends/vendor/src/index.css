@@ -273,14 +273,14 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
 
 /* ── KYC ────────────────────────────────────────────────── */
 
-.kyc-overlay { display: flex; justify-content: center; padding: 2rem 1rem; }
-.kyc-card { width: 100%; max-width: 460px; }
+.kyc-overlay { display: flex; justify-content: center; padding: 2.5rem 1rem; }
+.kyc-card { width: 100%; max-width: 460px; gap: 1.5rem; }
 .kyc-card .spinner { margin: 1.5rem auto; }
 
 /* Checking state */
 .kyc-checking {
   display: flex; flex-direction: column; align-items: center;
-  gap: 1rem; padding: 4rem 1rem;
+  gap: 1.25rem; padding: 4rem 1rem;
 }
 .kyc-checking-text {
   font-family: system-ui, sans-serif; font-size: 0.82rem;
@@ -288,11 +288,15 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
 }
 
 /* Card header */
-.kyc-card-header { text-align: center; }
+.kyc-card-header {
+  text-align: center;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #e8e2d8;
+}
 .kyc-tagline {
-  margin-top: 0.4rem;
-  font-family: system-ui, sans-serif; font-size: 0.78rem;
-  color: #8a7a68; font-style: italic;
+  margin-top: 0.5rem;
+  font-family: system-ui, sans-serif; font-size: 0.8rem;
+  color: #8a7a68; font-style: italic; line-height: 1.6;
 }
 
 /* Phase indicators (Step 1 / Step 2) */
@@ -302,58 +306,66 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
   font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase;
 }
 .kyc-phase {
-  display: flex; align-items: center; gap: 0.45rem;
+  display: flex; align-items: center; gap: 0.5rem;
   color: #c8bfb2; transition: color 0.2s;
 }
 .kyc-phase--active  { color: #6b1728; }
 .kyc-phase--done    { color: #4a7a50; }
 .kyc-phase--upcoming { color: #c8bfb2; }
 .kyc-phase-num {
-  width: 1.4rem; height: 1.4rem;
+  width: 1.6rem; height: 1.6rem;
   border-radius: 50%;
   border: 1.5px solid currentColor;
   display: flex; align-items: center; justify-content: center;
-  font-size: 0.6rem; font-weight: 700; flex-shrink: 0;
+  font-size: 0.62rem; font-weight: 700; flex-shrink: 0;
+  background: transparent; transition: background 0.2s, color 0.2s;
+}
+.kyc-phase--done .kyc-phase-num {
+  background: #4a7a50; border-color: #4a7a50; color: #faf7f2;
+}
+.kyc-phase--active .kyc-phase-num {
+  background: #6b1728; border-color: #6b1728; color: #faf7f2;
 }
 .kyc-phase-connector {
-  width: 2.5rem; height: 1px;
-  background: #c8bfb2; margin: 0 0.5rem;
+  width: 3.5rem; height: 1px;
+  background: #c8bfb2; margin: 0 0.75rem; flex-shrink: 0;
 }
 
 /* Start state */
 .kyc-start { display: flex; flex-direction: column; gap: 1.25rem; }
+.kyc-start > button { align-self: center; min-width: 200px; width: auto; }
 .kyc-requirements {
   list-style: none;
-  display: flex; flex-direction: column; gap: 0.65rem;
-  background: #ede8dc; border: 1px solid #c8bfb2;
-  padding: 1rem 1.1rem;
+  display: flex; flex-direction: column; gap: 0.75rem;
+  background: #ede8dc; border: 1px solid #e0d8cc;
+  padding: 1.1rem 1.25rem;
 }
 .kyc-requirements li {
-  display: flex; align-items: flex-start; gap: 0.7rem;
-  font-family: system-ui, sans-serif; font-size: 0.82rem;
-  color: #5a4a38; line-height: 1.55;
+  display: flex; align-items: center; gap: 0.85rem;
+  font-family: system-ui, sans-serif; font-size: 0.83rem;
+  color: #5a4a38; line-height: 1.5;
 }
-.kyc-req-icon { flex-shrink: 0; font-size: 1rem; line-height: 1.4; }
+.kyc-req-icon { flex-shrink: 0; font-size: 1.1rem; }
 
 /* Scanning state */
-.kyc-scan-panel { display: flex; flex-direction: column; gap: 1rem; }
+.kyc-scan-panel { display: flex; flex-direction: column; gap: 1rem; align-items: center; }
 .kyc-scan-subtitle {
-  font-family: system-ui, sans-serif; font-size: 0.82rem;
-  font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+  font-family: system-ui, sans-serif; font-size: 0.78rem;
+  font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
   color: #6b1728; text-align: center;
 }
 .kyc-scan-loading {
   display: flex; flex-direction: column; align-items: center; gap: 0.75rem;
-  padding: 1.5rem 0;
+  padding: 2rem 0;
 }
 .kyc-qr-frame {
   display: flex; justify-content: center; align-items: center;
   padding: 1.25rem;
-  background: #faf7f2; border: 1px solid #c8bfb2;
-  align-self: center;
+  background: #ffffff; border: 1px solid #c8bfb2;
+  box-shadow: 0 2px 12px rgba(26, 18, 10, 0.07);
 }
 .kyc-scan-status {
-  display: flex; align-items: center; justify-content: center; gap: 0.6rem;
+  display: flex; align-items: center; justify-content: center; gap: 0.5rem;
   font-family: system-ui, sans-serif; font-size: 0.78rem;
   color: #8a7a68; font-style: italic;
 }
@@ -368,24 +380,24 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
   margin-right: 0.4rem;
 }
 
-/* Issuing / Accepting panels */
+/* Issuing / Accepting / Error panels */
 .kyc-status-panel {
   display: flex; flex-direction: column; align-items: center;
-  gap: 0.75rem; padding: 0.5rem 0; text-align: center;
+  gap: 1rem; padding: 1.25rem 0; text-align: center;
 }
 .kyc-error-panel {
   display: flex; flex-direction: column; align-items: center;
-  gap: 1rem; padding: 0.5rem 0; text-align: center;
+  gap: 1.25rem; padding: 1rem 0; text-align: center;
 }
 .kyc-status-circle {
-  width: 3rem; height: 3rem; border-radius: 50%;
+  width: 3.5rem; height: 3.5rem; border-radius: 50%;
   border: 2px solid currentColor;
   display: flex; align-items: center; justify-content: center;
-  font-size: 1.1rem; margin-bottom: 0.25rem;
+  font-size: 1.3rem; margin-bottom: 0.1rem;
 }
-.kyc-status-circle--ok    { color: #4a7a50; }
-.kyc-status-circle--sign  { color: #b8963e; }
-.kyc-status-circle--error { color: #9b2a2a; }
+.kyc-status-circle--ok    { color: #4a7a50; background: rgba(74,122,80,0.06); }
+.kyc-status-circle--sign  { color: #b8963e; background: rgba(184,150,62,0.06); }
+.kyc-status-circle--error { color: #9b2a2a; background: rgba(155,42,42,0.06); }
 .kyc-status-title {
   font-family: system-ui, sans-serif; font-size: 0.8rem;
   font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase;
@@ -507,8 +519,8 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
 .stepper-connector { width: 1.5rem; height: 1px; background: #c8bfb2; margin: 0 0.2rem; }
 
 /* ── Progress bar ───────────────────────────────────────── */
-.progress-bar-wrap { background: #e8e2d8; height: 3px; width: 100%; overflow: hidden; }
-.progress-bar-fill { height: 100%; background: #6b1728; transition: width 0.5s ease; }
+.progress-bar-wrap { background: #e0dbd2; height: 4px; width: 100%; overflow: hidden; border-radius: 2px; }
+.progress-bar-fill { height: 100%; background: #6b1728; transition: width 0.6s ease; border-radius: 2px; }
 
 
 /* ── Empty state ────────────────────────────────────────── */

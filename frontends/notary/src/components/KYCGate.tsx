@@ -86,20 +86,25 @@ export function KYCGate({ address, sign, children, onStep }: Props) {
           </button>
         )}
 
-        {kyc.step === "scanning" && !kyc.verificationUrl && <div className="spinner" />}
+        {kyc.step === "scanning" && !kyc.verificationUrl && (
+          <div className="kyc-scan-loading">
+            <div className="spinner" />
+            <p className="info" style={{ fontSize: "0.82rem" }}>Generating verification code…</p>
+          </div>
+        )}
 
         {kyc.step === "scanning" && kyc.verificationUrl && (
           <>
             <p className="info" style={{ fontSize: "0.85rem" }}>
-              Scan the QR code with your SWIYU / eID wallet app.
+              Scan the QR code with your <strong>SWIYU</strong> or <strong>eID wallet app</strong>.
             </p>
-            <div style={{ display: "flex", justifyContent: "center", padding: "1rem 0" }}>
-              <QRCodeSVG value={kyc.verificationUrl} size={200} bgColor="#faf7f2" fgColor="#1a120a" />
+            <div className="kyc-qr-frame">
+              <QRCodeSVG value={kyc.verificationUrl} size={200} bgColor="#ffffff" fgColor="#1a120a" />
             </div>
-            <p className="info" style={{ fontSize: "0.78rem", textAlign: "center" }}>
-              {kyc.streamState ?? "Waiting for verification…"}
-            </p>
-            <div className="spinner" />
+            <div className="kyc-scan-status">
+              <div className="spinner spinner--sm" />
+              <span>{kyc.streamState ?? "Waiting for verification…"}</span>
+            </div>
           </>
         )}
 
