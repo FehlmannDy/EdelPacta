@@ -13,10 +13,8 @@ ARG VITE_API_BASE_URL=http://localhost:8080
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 RUN bun run build
 
-FROM oven/bun:alpine
-WORKDIR /app
-COPY --from=builder /frontends/buyer/node_modules ./node_modules
-COPY --from=builder /frontends/buyer/dist ./dist
-COPY buyer/package.json buyer/vite.config.ts buyer/tsconfig.json ./
-EXPOSE 3002
-CMD ["bun", "run", "preview", "--host", "0.0.0.0"]
+FROM nginx:alpine
+COPY --from=builder /frontends/buyer/dist /usr/share/nginx/html
+COPY buyer/nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
