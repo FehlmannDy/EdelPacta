@@ -18,14 +18,10 @@ async function get<T>(path: string): Promise<T> {
   return data as T;
 }
 
-export interface BuyerInfo {
-  address: string;
-  balance: string;
-}
-
 export interface CreateEscrowResult {
   escrowSequence: number;
   hash: string;
+  escrowAccount: string;
   buyerAddress: string;
   cancelAfter: number;
 }
@@ -53,21 +49,19 @@ export interface NftItem {
 }
 
 export const escrowApi = {
-  getBuyerInfo: (seed: string) =>
-    post<BuyerInfo>("/buyer-info", { seed }),
+  preparePayment: (params: { buyerAddress: string; amountRlusd: number }) =>
+    post<{ tx: Record<string, unknown> }>("/prepare-payment", params),
 
-  create: (params: { buyerSeed: string; sellerAddress: string; nftId: string; amountRlusd: number }) =>
-    post<CreateEscrowResult>("/create", params),
-
-  finish: (params: {
+  create: (params: {
+    paymentTxBlob: string;
     buyerAddress: string;
-    escrowSequence: number;
+    sellerAddress: string;
     nftId: string;
-    offerSequence: number;
-  }) => post<FinishEscrowResult>("/finish", params),
+    amountRlusd: number;
+  }) => post<CreateEscrowResult>("/create", params),
 
-  acceptNft: (params: { buyerSeed: string; offerId: string }) =>
-    post<AcceptNftResult>("/accept-nft", params),
+  finish: (params: { escrowSequence: number; nftId: string; offerSequence: number }) =>
+    post<FinishEscrowResult>("/finish", params),
 
   pending: (address: string) =>
     get<{ escrows: EscrowObject[] }>(`/pending/${address}`),

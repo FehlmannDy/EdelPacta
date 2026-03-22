@@ -1,7 +1,8 @@
 import { Router, Request, Response } from "express";
 import logger from "../logger";
 import {
-  getBuyerInfo,
+  getAddressInfo,
+  preparePayment,
   createEscrow,
   finishEscrow,
   acceptNft,
@@ -12,44 +13,68 @@ import {
 const router = Router();
 
 /**
- * POST /api/escrow/buyer-info
- * Derives the buyer's XRPL address and returns their XRP balance.
- * Body: { seed }
- * Response: { address, balance }
+ * GET /api/escrow/address-info/:address
+ * Returns XRP balance for a given XRPL address.
  */
-router.post("/buyer-info", async (req: Request, res: Response): Promise<void> => {
-  const { seed } = req.body as { seed?: unknown };
-  if (!seed || typeof seed !== "string") {
-    res.status(400).json({ error: "Missing required field: seed" });
+router.get("/address-info/:address", async (req: Request, res: Response): Promise<void> => {
+  const { address } = req.params;
+  try {
+    const info = await getAddressInfo(address);
+    res.json(info);
+  } catch (err) {
+    logger.error({ err }, "escrow: get address info failed");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+  }
+});
+
+/**
+ * POST /api/escrow/prepare-payment
+ * Returns an unsigned Payment tx for the buyer to sign with their Otsu wallet.
+ * Body: { buyerAddress, amountRlusd }
+ * Response: { tx }
+ */
+router.post("/prepare-payment", async (req: Request, res: Response): Promise<void> => {
+  const { buyerAddress, amountRlusd } = req.body as { buyerAddress?: unknown; amountRlusd?: unknown };
+  if (!buyerAddress || typeof buyerAddress !== "string") {
+    res.status(400).json({ error: "Missing required field: buyerAddress" });
+    return;
+  }
+  if (typeof amountRlusd !== "number" || amountRlusd <= 0) {
+    res.status(400).json({ error: "Missing or invalid field: amountRlusd" });
     return;
   }
   try {
-    const info = await getBuyerInfo(seed);
-    res.json(info);
+    const tx = await preparePayment(buyerAddress, amountRlusd);
+    res.json({ tx });
   } catch (err) {
-    logger.error({ err }, "escrow: get buyer info failed");
+    logger.error({ err }, "escrow: prepare payment failed");
     res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
   }
 });
 
 /**
  * POST /api/escrow/create
- * Creates an EscrowCreate transaction signed with the buyer's seed.
- * Embeds the WASM FinishFunction that enforces 6 on-chain checks.
+ * Submits the buyer's signed Payment, then creates EscrowCreate from the issuer account.
+ * The WASM FinishFunction is embedded and backend-signed — no buyer seed required.
  *
- * Body: { buyerSeed, sellerAddress, nftId, amountXrp }
- * Response: { escrowSequence, hash, buyerAddress, cancelAfter }
+ * Body: { paymentTxBlob, buyerAddress, sellerAddress, nftId, amountRlusd }
+ * Response: { escrowSequence, hash, escrowAccount, buyerAddress, cancelAfter }
  */
 router.post("/create", async (req: Request, res: Response): Promise<void> => {
-  const { buyerSeed, sellerAddress, nftId, amountRlusd } = req.body as {
-    buyerSeed?: unknown;
+  const { paymentTxBlob, buyerAddress, sellerAddress, nftId, amountRlusd } = req.body as {
+    paymentTxBlob?: unknown;
+    buyerAddress?: unknown;
     sellerAddress?: unknown;
     nftId?: unknown;
     amountRlusd?: unknown;
   };
 
-  if (!buyerSeed || typeof buyerSeed !== "string") {
-    res.status(400).json({ error: "Missing required field: buyerSeed" });
+  if (!paymentTxBlob || typeof paymentTxBlob !== "string") {
+    res.status(400).json({ error: "Missing required field: paymentTxBlob" });
+    return;
+  }
+  if (!buyerAddress || typeof buyerAddress !== "string") {
+    res.status(400).json({ error: "Missing required field: buyerAddress" });
     return;
   }
   if (!sellerAddress || typeof sellerAddress !== "string") {
@@ -66,8 +91,8 @@ router.post("/create", async (req: Request, res: Response): Promise<void> => {
   }
 
   try {
-    logger.info({ sellerAddress, nftId, amountRlusd }, "escrow: create request");
-    const result = await createEscrow({ buyerSeed, sellerAddress, nftId, amountRlusd });
+    logger.info({ buyerAddress, sellerAddress, nftId, amountRlusd }, "escrow: create request");
+    const result = await createEscrow({ paymentTxBlob, buyerAddress, sellerAddress, nftId, amountRlusd });
     res.json(result);
   } catch (err) {
     logger.error({ err }, "escrow: create failed");
@@ -77,24 +102,19 @@ router.post("/create", async (req: Request, res: Response): Promise<void> => {
 
 /**
  * POST /api/escrow/finish
- * Submits EscrowFinish with 6 memos (uses ISSUER_SEED for notaire + ORACLE_SEED for oracle).
+ * Submits EscrowFinish with 6 memos (uses ORACLE_SEED for all backend operations).
  * The WASM verifies: notaire identity, KYC, NFT ownership, dual signatures, NFT offer active.
  *
  * Body: { buyerAddress, escrowSequence, nftId, offerSequence }
  * Response: { hash }
  */
 router.post("/finish", async (req: Request, res: Response): Promise<void> => {
-  const { buyerAddress, escrowSequence, nftId, offerSequence } = req.body as {
-    buyerAddress?: unknown;
+  const { escrowSequence, nftId, offerSequence } = req.body as {
     escrowSequence?: unknown;
     nftId?: unknown;
     offerSequence?: unknown;
   };
 
-  if (!buyerAddress || typeof buyerAddress !== "string") {
-    res.status(400).json({ error: "Missing required field: buyerAddress" });
-    return;
-  }
   if (typeof escrowSequence !== "number") {
     res.status(400).json({ error: "Missing or invalid field: escrowSequence (must be a number)" });
     return;
@@ -109,8 +129,8 @@ router.post("/finish", async (req: Request, res: Response): Promise<void> => {
   }
 
   try {
-    logger.info({ buyerAddress, escrowSequence, nftId, offerSequence }, "escrow: finish request");
-    const result = await finishEscrow({ buyerAddress, escrowSequence, nftId, offerSequence });
+    logger.info({ escrowSequence, nftId, offerSequence }, "escrow: finish request");
+    const result = await finishEscrow({ escrowSequence, nftId, offerSequence });
     res.json(result);
   } catch (err) {
     logger.error({ err }, "escrow: finish failed");

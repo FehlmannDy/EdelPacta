@@ -38,7 +38,6 @@ export function EscrowFinish({ escrow, onFinished }: Props) {
       escrowLog.info("submitting EscrowFinish", { escrow, offerSequence });
       setStep(1);
       const res = await escrowApi.finish({
-        buyerAddress: escrow.buyerAddress,
         escrowSequence: escrow.escrowSequence,
         nftId: escrow.nftId,
         offerSequence: parseInt(offerSequence, 10),
@@ -81,7 +80,7 @@ export function EscrowFinish({ escrow, onFinished }: Props) {
       </p>
 
       <div className="result" style={{ marginBottom: 0 }}>
-        <p><strong>Buyer</strong><br /><Copyable text={escrow.buyerAddress} truncate={10} /></p>
+        <p><strong>Compte escrow</strong><br /><Copyable text={escrow.escrowAccount} truncate={10} /></p>
         <p><strong>Escrow Sequence</strong><br />{escrow.escrowSequence}</p>
         <p><strong>NFT ID</strong><br /><Copyable text={escrow.nftId} truncate={10} /></p>
       </div>

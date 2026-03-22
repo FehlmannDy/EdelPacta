@@ -20,11 +20,11 @@ use xrpl_wasm_stdlib::types::{ContractData, XRPL_CONTRACT_DATA_SIZE};
 
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
 
-/// Notaire autorisé — adresse réelle du wallet Notaire (env.json)
-const NOTARY_ACCOUNT: [u8; 20] = r_address!("rUTnSM1B6powD9Ev1kpXgtMgxG3wGikwbQ");
+/// Oracle — seul wallet backend autorisé à soumettre EscrowFinish
+const NOTARY_ACCOUNT: [u8; 20] = r_address!("raW1qTXwu1qDaEzW1cKmMCn8Q7MuvEHTVK");
 
-/// Émetteur du credential KYC — même wallet Notaire
-const KYC_ISSUER: [u8; 20] = r_address!("rUTnSM1B6powD9Ev1kpXgtMgxG3wGikwbQ");
+/// Émetteur du credential KYC — même wallet Oracle
+const KYC_ISSUER: [u8; 20] = r_address!("raW1qTXwu1qDaEzW1cKmMCn8Q7MuvEHTVK");
 
 // ─── Point d'entrée ────────────────────────────────────────────────────────────
 //
@@ -118,7 +118,7 @@ pub extern "C" fn finish() -> i32 {
     };
 
     // ── [2] KYC Bob — credential on-chain ─────────────────────────────────
-    match credential_keylet(&bob, &AccountID(KYC_ISSUER), b"KYC_OK") {
+    match credential_keylet(&bob, &AccountID(KYC_ISSUER), b"SWIYU_KYC") {
         Ok(keylet) => {
             let slot = unsafe { cache_ledger_obj(keylet.as_ptr(), keylet.len(), 0) };
             if slot >= 0 {

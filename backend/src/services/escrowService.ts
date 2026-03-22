@@ -130,28 +130,74 @@ export function getOracleWallet(): Wallet {
   return Wallet.fromSeed(seed);
 }
 
+/** @deprecated Use getOracleWallet() */
 export function getNotaireWallet(): Wallet {
-  const seed = process.env.ISSUER_SEED;
-  if (!seed) throw new Error("ISSUER_SEED not configured");
-  return Wallet.fromSeed(seed);
+  return getOracleWallet();
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-export async function getBuyerInfo(buyerSeed: string): Promise<{ address: string; balance: string }> {
-  const buyer = Wallet.fromSeed(buyerSeed);
+export async function getAddressInfo(address: string): Promise<{ address: string; balance: string }> {
   const client = new Client(ENDPOINT);
   await client.connect();
   try {
-    const balance = await getXrpBalance(client, buyer.address);
-    return { address: buyer.address, balance };
+    const balance = await getXrpBalance(client, address);
+    return { address, balance };
   } finally {
     await client.disconnect();
   }
 }
 
+async function activateBuyerAccount(client: Client, issuer: Wallet, buyerAddress: string): Promise<void> {
+  const { sequence, medianFee, lastLedger } = await autofillBase(client, issuer.address);
+  const tx: Record<string, unknown> = {
+    TransactionType: "Payment",
+    Account: issuer.address,
+    Destination: buyerAddress,
+    Amount: "40000000", // 40 XRP in drops
+    Sequence: sequence,
+    LastLedgerSequence: lastLedger,
+    Fee: String(Math.max(medianFee, 12)),
+    NetworkID: NETWORK_ID,
+  };
+  const { tx_blob, hash } = signCustomTx(tx, issuer);
+  const { ok, engineResult } = await submitAndCheck(client, tx_blob, "Payment(topup→buyer)");
+  if (!ok) throw new Error(`Failed to top up buyer account: ${engineResult}`);
+  logger.info({ buyerAddress, hash }, "escrow: buyer account topped up");
+  await sleep(3000);
+}
+
+// ─── Prepare unsigned Payment for buyer to sign with Otsu ─────────────────────
+
+export async function preparePayment(
+  buyerAddress: string,
+  amountRlusd: number
+): Promise<Record<string, unknown>> {
+  const issuer = getNotaireWallet();
+  const client = new Client(ENDPOINT);
+  await client.connect();
+  try {
+    const { sequence, medianFee, lastLedger } = await autofillBase(client, buyerAddress);
+    return {
+      TransactionType: "Payment",
+      Account: buyerAddress,
+      Destination: issuer.address,
+      Amount: String(Math.round(amountRlusd * 1_000_000)),
+      Sequence: sequence,
+      LastLedgerSequence: lastLedger,
+      Fee: String(Math.max(medianFee, 12)),
+      NetworkID: NETWORK_ID,
+    };
+  } finally {
+    await client.disconnect();
+  }
+}
+
+// ─── Create escrow from issuer account after buyer's payment ──────────────────
+
 export interface CreateEscrowParams {
-  buyerSeed: string;
+  paymentTxBlob: string; // signed Payment (buyer → issuer), signed by buyer via Otsu
+  buyerAddress: string;
   sellerAddress: string;
   nftId: string;
   amountRlusd: number;
@@ -160,17 +206,18 @@ export interface CreateEscrowParams {
 export interface CreateEscrowResult {
   escrowSequence: number;
   hash: string;
+  escrowAccount: string; // issuer address (Account of EscrowCreate)
   buyerAddress: string;
   cancelAfter: number;
 }
 
 export async function createEscrow(params: CreateEscrowParams): Promise<CreateEscrowResult> {
-  const { buyerSeed, sellerAddress, nftId, amountRlusd } = params;
-  const buyer = Wallet.fromSeed(buyerSeed);
+  const { paymentTxBlob, buyerAddress, sellerAddress, nftId, amountRlusd } = params;
+  const issuer = getNotaireWallet();
 
   const wasmHex = readFileSync(WASM_PATH).toString("hex").toUpperCase();
   logger.info(
-    { wasmBytes: wasmHex.length / 2, buyerAddress: buyer.address, sellerAddress, nftId, amountRlusd },
+    { wasmBytes: wasmHex.length / 2, buyerAddress, escrowAccount: issuer.address, sellerAddress, nftId, amountRlusd },
     "escrow: creating"
   );
 
@@ -178,14 +225,28 @@ export async function createEscrow(params: CreateEscrowParams): Promise<CreateEs
   await client.connect();
 
   try {
-    const { sequence, medianFee, lastLedger } = await autofillBase(client, buyer.address);
+    // 1 — Submit the buyer's signed Payment (buyer → issuer)
+    const { ok: payOk, engineResult: payResult } = await submitAndCheck(client, paymentTxBlob, "Payment(buyer→issuer)");
+    if (!payOk) {
+      if (payResult === "tecUNFUNDED_PAYMENT" || payResult === "terINSUF_FEE_B") {
+        // Buyer account lacks sufficient XRP — top it up and inform the user
+        logger.warn({ buyerAddress, payResult }, "escrow: buyer underfunded, topping up");
+        await activateBuyerAccount(client, issuer, buyerAddress);
+        throw new Error("Votre compte manquait de XRP pour le paiement. Nous l'avons rechargé automatiquement — veuillez relancer la transaction.");
+      }
+      throw new Error(`Buyer payment rejected by ledger: ${payResult}`);
+    }
+    await sleep(4000);
+
+    // 2 — Create EscrowCreate from issuer (backend-signed, includes FinishFunction WASM)
+    const { sequence, medianFee, lastLedger } = await autofillBase(client, issuer.address);
     const txBlocks = Math.ceil((wasmHex.length / 2 + 200) / 512);
     const txFee = String(Math.max(medianFee * txBlocks, 50000));
-    const cancelAfter = Math.floor(Date.now() / 1000) - 946684800 + 3600;
+    const cancelAfter = Math.floor(Date.now() / 1000) - 946684800 + 7200; // 2h
 
-    const tx: Record<string, unknown> = {
+    const escrowTx: Record<string, unknown> = {
       TransactionType: "EscrowCreate",
-      Account: buyer.address,
+      Account: issuer.address,
       Destination: sellerAddress,
       Amount: String(Math.round(amountRlusd * 1_000_000)),
       CancelAfter: cancelAfter,
@@ -195,23 +256,27 @@ export async function createEscrow(params: CreateEscrowParams): Promise<CreateEs
       LastLedgerSequence: lastLedger,
       Fee: txFee,
       NetworkID: NETWORK_ID,
+      // Memo records the buyer address on-chain
+      Memos: [
+        { Memo: { MemoType: toHex("BUYER"), MemoData: toHex(buyerAddress) } },
+        { Memo: { MemoType: toHex("NFT_ID"), MemoData: nftId.toUpperCase() } },
+      ],
     };
 
-    const { tx_blob, hash } = signCustomTx(tx, buyer);
-    const { ok } = await submitAndCheck(client, tx_blob, "EscrowCreate");
-    if (!ok) throw new Error("EscrowCreate rejected by ledger");
+    const { tx_blob, hash } = signCustomTx(escrowTx, issuer);
+    const { ok: escrowOk } = await submitAndCheck(client, tx_blob, "EscrowCreate");
+    if (!escrowOk) throw new Error("EscrowCreate rejected by ledger");
 
     await sleep(5000);
-    logger.info({ escrowSequence: sequence, hash }, "escrow: created");
+    logger.info({ escrowSequence: sequence, hash, escrowAccount: issuer.address }, "escrow: created");
 
-    return { escrowSequence: sequence, hash, buyerAddress: buyer.address, cancelAfter };
+    return { escrowSequence: sequence, hash, escrowAccount: issuer.address, buyerAddress, cancelAfter };
   } finally {
     await client.disconnect();
   }
 }
 
 export interface FinishEscrowParams {
-  buyerAddress: string;
   escrowSequence: number;
   nftId: string;
   offerSequence: number;
@@ -222,11 +287,12 @@ export interface FinishEscrowResult {
 }
 
 export async function finishEscrow(params: FinishEscrowParams): Promise<FinishEscrowResult> {
-  const { buyerAddress, escrowSequence, nftId, offerSequence } = params;
+  const { escrowSequence, nftId, offerSequence } = params;
   const notaire = getNotaireWallet();
   const oracle = getOracleWallet();
 
-  logger.info({ buyerAddress, escrowSequence, nftId, offerSequence }, "escrow: finishing");
+  // The escrow Account is the issuer (notaire) — same wallet
+  logger.info({ escrowAccount: notaire.address, escrowSequence, nftId, offerSequence }, "escrow: finishing");
 
   // Both notaire and oracle sign the NFT ID
   const msgHex = nftId.toLowerCase();
@@ -247,7 +313,7 @@ export async function finishEscrow(params: FinishEscrowParams): Promise<FinishEs
     const tx: Record<string, unknown> = {
       TransactionType: "EscrowFinish",
       Account: notaire.address,
-      Owner: buyerAddress,
+      Owner: notaire.address, // issuer created the escrow, so Owner = issuer
       OfferSequence: escrowSequence,
       Flags: 0,
       Sequence: sequence,

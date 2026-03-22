@@ -1,4 +1,4 @@
-import { Client, Wallet, convertStringToHex, CredentialCreate, CredentialAccept, CredentialDelete } from "xrpl";
+import { Client, Wallet, convertStringToHex, CredentialCreate, CredentialAccept, CredentialDelete, Payment } from "xrpl";
 
 const VERIFIER_BASE = process.env.VERIFIER_BASE_URL ?? "https://beta-verifier.edel-id.ch";
 
@@ -59,8 +59,8 @@ export const CREDENTIAL_TYPE_TAX_HEX = convertStringToHex("SWIYU_KYC_TAX");
 const LSF_ACCEPTED = 0x00010000;
 
 function getIssuerWallet(): Wallet {
-  const seed = process.env.ISSUER_SEED;
-  if (!seed) throw new Error("ISSUER_SEED environment variable is not set.");
+  const seed = process.env.ORACLE_SEED ?? process.env.ISSUER_SEED;
+  if (!seed) throw new Error("ORACLE_SEED environment variable is not set.");
   return Wallet.fromSeed(seed);
 }
 
@@ -222,6 +222,28 @@ export async function checkCredentialStatus(
 // Credential issuance (backend signs)
 // ---------------------------------------------------------------------------
 
+async function activateAccount(
+  client: Client,
+  issuer: Wallet,
+  subjectAddress: string
+): Promise<void> {
+  // Send 100 XRP to activate the account (base reserve = 10 XRP, rest is usable balance)
+  const payment: Payment = {
+    TransactionType: "Payment",
+    Account: issuer.address,
+    Destination: subjectAddress,
+    Amount: "40000000", // 40 XRP in drops
+  };
+  const prepared = await client.autofill(payment);
+  const signed = issuer.sign(prepared);
+  const result = await client.submitAndWait(signed.tx_blob);
+  const meta = result.result.meta as Record<string, unknown> | undefined;
+  const txResult = meta?.["TransactionResult"] as string;
+  if (txResult !== "tesSUCCESS") {
+    throw new Error(`Account activation payment failed: ${txResult}`);
+  }
+}
+
 export async function issueCredential(
   subjectAddress: string,
   credentialTypes: string[] = [CREDENTIAL_TYPE_HEX],
@@ -247,11 +269,25 @@ export async function issueCredential(
       const meta = result.result.meta as Record<string, unknown> | undefined;
       const txResult = meta?.["TransactionResult"] as string;
 
-      // tecDUPLICATE means credential already issued — not an error for us
-      if (txResult !== "tesSUCCESS" && txResult !== "tecDUPLICATE") {
+      if (txResult === "tecNO_TARGET") {
+        // Subject account doesn't exist on this network — activate it first
+        await activateAccount(client, issuer, subjectAddress);
+        // Retry the CredentialCreate
+        const prepared2 = await client.autofill(tx);
+        const signed2 = issuer.sign(prepared2);
+        const result2 = await client.submitAndWait(signed2.tx_blob);
+        const meta2 = result2.result.meta as Record<string, unknown> | undefined;
+        const txResult2 = meta2?.["TransactionResult"] as string;
+        if (txResult2 !== "tesSUCCESS" && txResult2 !== "tecDUPLICATE") {
+          throw new Error(`CredentialCreate (${credType}) failed after activation: ${txResult2}`);
+        }
+        lastHash = signed2.hash;
+      } else if (txResult !== "tesSUCCESS" && txResult !== "tecDUPLICATE") {
+        // tecDUPLICATE means credential already issued — not an error for us
         throw new Error(`CredentialCreate (${credType}) failed: ${txResult}`);
+      } else {
+        lastHash = signed.hash;
       }
-      lastHash = signed.hash;
     }
     return { txHash: lastHash };
   } finally {

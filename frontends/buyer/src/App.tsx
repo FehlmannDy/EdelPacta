@@ -145,7 +145,11 @@ export default function App() {
         ) : (
           <KYCGate key={kycKey} address={wallet.address!} sign={wallet.sign} onStep={setKycStep}>
             {flowStep === "create" && (
-              <EscrowCreate onCreated={handleEscrowCreated} />
+              <EscrowCreate
+                buyerAddress={wallet.address!}
+                sign={wallet.sign}
+                onCreated={handleEscrowCreated}
+              />
             )}
 
             {flowStep === "finish" && escrowResult && (

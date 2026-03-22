@@ -6,26 +6,25 @@ import { Copyable } from "./Copyable";
 import { useToast } from "../context/ToastContext";
 
 interface Props {
+  buyerAddress: string;
+  sign: (tx: Record<string, unknown>) => Promise<string>;
   onCreated: (result: CreateEscrowResult & { nftId: string; amountRlusd: number }) => void;
 }
 
-const STEPS = ["Préparation", "Signature", "Confirmation"];
+const STEPS = ["Préparer le paiement", "Signer avec Otsu", "Créer l'escrow"];
 
-export function EscrowCreate({ onCreated }: Props) {
+export function EscrowCreate({ buyerAddress, sign, onCreated }: Props) {
   const { addToast } = useToast();
-  const [buyerSeed, setBuyerSeed] = useState("");
   const [sellerAddress, setSellerAddress] = useState("");
   const [nftId, setNftId] = useState("");
   const [amountRlusd, setAmountRlusd] = useState("");
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState(-1);
   const [result, setResult] = useState<(CreateEscrowResult & { nftId: string; amountRlusd: number }) | null>(null);
-  const [errors, setErrors] = useState<{ seed?: string; seller?: string; nft?: string; amount?: string }>({});
+  const [errors, setErrors] = useState<{ seller?: string; nft?: string; amount?: string }>({});
 
   function validate() {
     const e: typeof errors = {};
-    if (!buyerSeed.trim())
-      e.seed = "Seed requis pour signer la transaction WASM";
     if (!sellerAddress.trim() || !/^r[a-zA-Z0-9]{24,}$/.test(sellerAddress.trim()))
       e.seller = "Adresse XRPL valide requise (commence par r…)";
     if (!nftId.trim() || !/^[0-9A-Fa-f]{64}$/.test(nftId.trim()))
@@ -43,19 +42,31 @@ export function EscrowCreate({ onCreated }: Props) {
     setStep(0);
     setResult(null);
     try {
-      escrowLog.info("creating escrow", { sellerAddress, nftId, amountRlusd });
+      const amt = parseFloat(amountRlusd);
+
+      // Step 1 — backend prepares an unsigned Payment
+      escrowLog.info("preparing payment tx", { buyerAddress, amountRlusd });
+      const { tx } = await escrowApi.preparePayment({ buyerAddress, amountRlusd: amt });
+
+      // Step 2 — buyer signs with Otsu (standard Payment, no custom fields)
       setStep(1);
+      escrowLog.info("signing payment with Otsu");
+      const paymentTxBlob = await sign(tx);
+
+      // Step 3 — backend submits payment + creates EscrowCreate with WASM
+      setStep(2);
+      escrowLog.info("creating escrow", { sellerAddress, nftId });
       const res = await escrowApi.create({
-        buyerSeed: buyerSeed.trim(),
+        paymentTxBlob,
+        buyerAddress,
         sellerAddress: sellerAddress.trim(),
         nftId: nftId.trim().toUpperCase(),
-        amountRlusd: parseFloat(amountRlusd),
+        amountRlusd: amt,
       });
-      setStep(2);
+
       escrowLog.info("escrow created", res);
-      const full = { ...res, nftId: nftId.trim().toUpperCase(), amountRlusd: parseFloat(amountRlusd) };
+      const full = { ...res, nftId: nftId.trim().toUpperCase(), amountRlusd: amt };
       setResult(full);
-      setBuyerSeed("");
       onCreated(full);
       addToast(`Escrow créé — ${amountRlusd} RLUSD verrouillés on-chain.`, "success");
     } catch (err) {
@@ -99,10 +110,10 @@ export function EscrowCreate({ onCreated }: Props) {
         <div className="result" style={{ gap: "0.5rem" }}>
           <p style={{ margin: 0 }}>
             <strong style={{ fontSize: "0.72rem", letterSpacing: "0.06em", textTransform: "uppercase", color: "#8a7060" }}>
-              Adresse acheteur
+              Compte escrow
             </strong>
             <br />
-            <Copyable text={result.buyerAddress} truncate={12} />
+            <Copyable text={result.escrowAccount} truncate={12} />
           </p>
           <p style={{ margin: 0 }}>
             <strong style={{ fontSize: "0.72rem", letterSpacing: "0.06em", textTransform: "uppercase", color: "#8a7060" }}>
@@ -136,46 +147,10 @@ export function EscrowCreate({ onCreated }: Props) {
       </div>
 
       <p className="info" style={{ fontSize: "0.85rem", lineHeight: 1.7, marginTop: "0.25rem" }}>
-        Verrouillez des RLUSD dans un escrow sécurisé par contrat WASM. Les fonds sont
-        libérés automatiquement au vendeur une fois que le notaire valide les 6 conditions.
+        Verrouillez des RLUSD dans un escrow sécurisé par contrat WASM. Votre wallet Otsu
+        signera uniquement un paiement standard — aucune seed requise.
       </p>
 
-      {/* Seed section — visually distinct */}
-      <div style={{
-        background: "rgba(107,23,40,0.04)",
-        border: "1px solid rgba(107,23,40,0.15)",
-        borderRadius: "8px",
-        padding: "0.85rem 1rem",
-        display: "flex",
-        flexDirection: "column",
-        gap: "0.4rem",
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
-          <span style={{ fontSize: "0.85rem" }}>🔑</span>
-          <span style={{ fontSize: "0.72rem", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: "#6b1728" }}>
-            Signature requise
-          </span>
-        </div>
-        <p style={{ margin: 0, fontSize: "0.78rem", color: "#7a6050", lineHeight: 1.5 }}>
-          L'escrow WASM utilise un champ personnalisé (<code>FinishFunction</code>) que les
-          extensions de navigateur ne peuvent pas signer. Votre seed est utilisé uniquement
-          pour cette étape et jamais stocké.
-        </p>
-        <label style={{ margin: 0 }}>
-          <input
-            type="password"
-            placeholder="sEd… — seed de votre wallet XRPL"
-            value={buyerSeed}
-            onChange={(e) => setBuyerSeed(e.target.value)}
-            disabled={loading}
-            autoComplete="off"
-            style={{ marginTop: "0.4rem" }}
-          />
-          {errors.seed && <span className="field-error">{errors.seed}</span>}
-        </label>
-      </div>
-
-      {/* Transaction details */}
       <label>
         Adresse du Vendeur
         <input
@@ -230,7 +205,7 @@ export function EscrowCreate({ onCreated }: Props) {
         </div>
       )}
 
-      <button onClick={handleCreate} disabled={loading || !buyerSeed.trim()}>
+      <button onClick={handleCreate} disabled={loading}>
         {loading ? (
           <><span className="spinner spinner--sm spinner--inline" /> Création en cours…</>
         ) : "Verrouiller les RLUSD dans l'Escrow"}
