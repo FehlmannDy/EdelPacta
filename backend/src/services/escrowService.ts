@@ -425,32 +425,72 @@ export async function getPendingEscrows(address: string): Promise<Record<string,
 
 /**
  * Returns all on-chain escrows created by the notary/issuer that belong to a given buyer.
- * Matches by the BUYER memo embedded in each EscrowCreate transaction.
+ *
+ * Strategy: Memos are stored on transactions, not on Escrow ledger objects.
+ * So we scan the issuer's EscrowCreate transaction history via account_tx,
+ * find those with a matching BUYER memo, then verify each escrow is still
+ * live on-chain via ledger_entry.
  */
 export async function getEscrowsByBuyer(buyerAddress: string): Promise<Record<string, unknown>[]> {
   const issuer = getOracleWallet();
-  const buyerMemoType = toHex("BUYER");
-  const buyerMemoData = toHex(buyerAddress);
+  const buyerMemoType = toHex("BUYER").toUpperCase();
+  const buyerMemoData = toHex(buyerAddress).toUpperCase();
 
   const client = new Client(ENDPOINT);
   await client.connect();
   try {
-    const response = await client.request({
-      command: "account_objects",
+    // 1 — Find all EscrowCreate transactions from the issuer with a matching BUYER memo
+    const txResponse = await client.request({
+      command: "account_tx",
       account: issuer.address,
-      type: "escrow",
-      ledger_index: "validated",
+      ledger_index_min: -1,
+      ledger_index_max: -1,
+      limit: 200,
+      forward: false,
     });
-    const all = (response.result.account_objects ?? []) as Record<string, unknown>[];
-    return all.filter((escrow) => {
-      const memos = escrow["Memos"] as Array<{ Memo: { MemoType?: string; MemoData?: string } }> | undefined;
-      if (!memos) return false;
-      return memos.some(
+
+    const transactions = (
+      (txResponse.result as Record<string, unknown>)["transactions"] as Record<string, unknown>[]
+    ) ?? [];
+
+    const matchingSequences: number[] = [];
+    for (const entry of transactions) {
+      const tx = (entry["tx"] ?? entry["tx_json"]) as Record<string, unknown> | undefined;
+      if (!tx) continue;
+      if (tx["TransactionType"] !== "EscrowCreate") continue;
+
+      const memos = tx["Memos"] as Array<{ Memo: { MemoType?: string; MemoData?: string } }> | undefined;
+      if (!memos) continue;
+
+      const hasBuyer = memos.some(
         (m) =>
           m.Memo.MemoType?.toUpperCase() === buyerMemoType &&
           m.Memo.MemoData?.toUpperCase() === buyerMemoData
       );
-    });
+      if (hasBuyer) {
+        matchingSequences.push(tx["Sequence"] as number);
+      }
+    }
+
+    if (matchingSequences.length === 0) return [];
+
+    // 2 — For each matching sequence, fetch the live escrow object (may no longer exist if finished/cancelled)
+    const results: Record<string, unknown>[] = [];
+    for (const seq of matchingSequences) {
+      try {
+        const entry = await client.request({
+          command: "ledger_entry",
+          escrow: { owner: issuer.address, seq },
+          ledger_index: "validated",
+        });
+        const node = (entry.result as Record<string, unknown>)["node"] as Record<string, unknown>;
+        if (node) results.push(node);
+      } catch (_) {
+        // Escrow already finished or cancelled — skip
+      }
+    }
+
+    return results;
   } catch (_) {
     return [];
   } finally {
