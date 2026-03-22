@@ -1,6 +1,7 @@
 import { useState, useEffect, useImperativeHandle, forwardRef } from "react";
 import { escrowApi, NftItem } from "../api/escrow";
-import { Copyable } from "./Copyable";
+import { Copyable } from "@shared/components/Copyable";
+import { SkeletonCard } from "@shared/components/SkeletonCard";
 
 interface Props {
   address: string;
@@ -13,6 +14,7 @@ export interface OwnedNFTsHandle {
 export const OwnedNFTs = forwardRef<OwnedNFTsHandle, Props>(({ address }, ref) => {
   const [nfts, setNfts] = useState<NftItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [initialLoad, setInitialLoad] = useState(true);
 
   const load = async () => {
     setLoading(true);
@@ -23,6 +25,7 @@ export const OwnedNFTs = forwardRef<OwnedNFTsHandle, Props>(({ address }, ref) =
       // silent
     } finally {
       setLoading(false);
+      setInitialLoad(false);
     }
   };
 
@@ -43,8 +46,11 @@ export const OwnedNFTs = forwardRef<OwnedNFTsHandle, Props>(({ address }, ref) =
         </button>
       </div>
 
-      {loading && nfts.length === 0 ? (
-        <div className="spinner" />
+      {loading && initialLoad ? (
+        <>
+          <SkeletonCard />
+          <SkeletonCard />
+        </>
       ) : nfts.length === 0 ? (
         <div className="empty-state">
           <span>No property title deeds held yet.</span>

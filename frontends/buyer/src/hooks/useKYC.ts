@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { kycApi, CredentialStatus } from "../api/kyc";
 import { kycLog } from "../logger";
+import { readSSEStream } from "@shared/utils/readSSEStream";
 
 export type KYCStep =
   | "checking"
@@ -16,36 +17,6 @@ export interface KYCState {
   verificationUrl: string | null;
   streamState: string | null;
   error: string | null;
-}
-
-async function* readSSEStream(
-  response: Response
-): AsyncGenerator<Record<string, unknown>> {
-  if (!response.body) return;
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    const chunk = decoder.decode(value);
-    const lines = chunk.split("\n");
-
-    for (const line of lines) {
-      if (line.startsWith("data:")) {
-        const jsonData = line.substring(5).trim();
-        if (jsonData) {
-          try {
-            yield JSON.parse(jsonData) as Record<string, unknown>;
-          } catch {
-            // malformed JSON — skip
-          }
-        }
-      }
-    }
-  }
 }
 
 export function useKYC(
@@ -64,7 +35,7 @@ export function useKYC(
     setState((s) => ({ ...s, step, error: null, streamState: null, ...extra }));
 
   const acceptCredential = useCallback(async (addr: string) => {
-    setStep("accepting");
+    setState((s) => ({ ...s, step: "accepting", error: null, streamState: null }));
     try {
       kycLog.info("accepting credential", { addr });
       const txs = await kycApi.prepareAccept(addr);
@@ -73,7 +44,6 @@ export function useKYC(
         await submitTx(txBlob);
       }
       kycLog.info("credential accepted", { count: txs.length });
-      setStep("done");
     } catch (err) {
       kycLog.error("credential accept failed", { err });
       setState((s) => ({
@@ -81,10 +51,10 @@ export function useKYC(
         step: "error",
         error: err instanceof Error ? err.message : "Failed to accept credential",
       }));
+      throw err;
     }
   }, [sign, submitTx]);
 
-  // Check credential status on connect / address change
   useEffect(() => {
     if (!address) {
       setState({ step: "checking", verificationUrl: null, streamState: null, error: null });
@@ -93,11 +63,12 @@ export function useKYC(
 
     setStep("checking");
     kycLog.info("checking credential status", { address });
+
     kycApi.status(address)
       .then((status: CredentialStatus) => {
         kycLog.info("credential status", { address, status });
         if (status === "accepted") setStep("done");
-        else if (status === "pending_acceptance") acceptCredential(address);
+        else if (status === "pending_acceptance") acceptCredential(address).then(() => setStep("done")).catch(() => {});
         else setStep("start");
       })
       .catch((err) => {
@@ -106,67 +77,70 @@ export function useKYC(
       });
   }, [address]);
 
-  const listenForVerification = useCallback(async (verificationId: string, addr: string) => {
-    try {
-      const response = await fetch(kycApi.streamUrl(verificationId));
-
-      if (!response.ok) {
-        throw new Error(`Stream request failed: ${response.statusText}`);
-      }
-
-      for await (const event of readSSEStream(response)) {
-        const eventState = event["state"] as string | undefined;
-
-        kycLog.debug("SSE event", { state: eventState });
-
-        setState((s) => ({
-          ...s,
-          streamState: eventState ? `Verification state: ${eventState}` : s.streamState,
-        }));
-
-        if (eventState === "SUCCESS") {
-          kycLog.info("verification SUCCESS");
-          setStep("issuing");
-          await kycApi.issue(addr);
-          await acceptCredential(addr);
-          return;
-        }
-
-        if (eventState === "ERROR") {
-          const errMsg = (event["error"] as string) ?? "Verification failed";
-          kycLog.warn("verification ERROR from verifier", { error: errMsg });
-          setState((s) => ({ ...s, step: "error", error: errMsg }));
-          return;
-        }
-      }
-    } catch (err) {
-      kycLog.error("SSE stream error", { err });
-      setState((s) => ({
-        ...s,
-        step: "error",
-        error: err instanceof Error ? err.message : "Stream error",
-      }));
-    }
-  }, [acceptCredential]);
-
   const startKYC = useCallback(async () => {
     if (!address) return;
-    setStep("scanning");
     try {
+      const status = await kycApi.status(address);
+      if (status === "pending_acceptance") {
+        await acceptCredential(address);
+        setStep("done");
+        return;
+      }
+      if (status === "accepted") {
+        setStep("done");
+        return;
+      }
+
+      setState((s) => ({ ...s, step: "scanning", error: null, streamState: null, verificationUrl: null }));
       kycLog.info("starting KYC verification", { address });
       const { verificationId, verificationUrl } = await kycApi.start();
       kycLog.info("verification session created", { verificationId });
+      if (!verificationUrl) throw new Error("Verifier did not return a verification URL");
       setState((s) => ({ ...s, verificationUrl }));
-      listenForVerification(verificationId, address);
+      // Yield to the event loop so React renders the QR code before SSE events arrive
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+      const response = await fetch(kycApi.streamUrl(verificationId));
+      if (!response.ok) throw new Error(`Stream request failed: ${response.statusText}`);
+
+      for await (const event of readSSEStream(response)) {
+        const eventState = event["state"] as string | undefined;
+        kycLog.debug("SSE event", { state: eventState });
+
+        if (eventState === "SUCCESS") {
+          kycLog.info("verification SUCCESS");
+          setState((s) => ({ ...s, step: "issuing", error: null, streamState: null }));
+          await kycApi.issue(address);
+          await acceptCredential(address);
+          setStep("done");
+          return;
+        }
+        if (eventState === "ERROR" || eventState === "DECLINED") {
+          throw new Error(
+            eventState === "DECLINED"
+              ? "Verification was declined. Please try again."
+              : ((event["error"] as string) ?? "Verification failed")
+          );
+        }
+        if (eventState === "EXPIRED") {
+          throw new Error("Verification session expired. Please try again.");
+        }
+        // For other states (e.g. PENDING), surface them in the UI
+        if (eventState) {
+          setState((s) => ({ ...s, streamState: eventState }));
+        }
+      }
+      // Stream closed without a terminal event (server timeout / network drop)
+      throw new Error("Verification session ended unexpectedly. Please try again.");
     } catch (err) {
-      kycLog.error("failed to start KYC", { err });
+      kycLog.error("KYC failed", { err });
       setState((s) => ({
         ...s,
         step: "error",
-        error: err instanceof Error ? err.message : "Failed to start KYC",
+        error: err instanceof Error ? err.message : "KYC verification failed",
       }));
     }
-  }, [address, listenForVerification]);
+  }, [address, acceptCredential]);
 
   const retry = useCallback(() => setStep("start"), []);
 

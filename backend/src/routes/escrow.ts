@@ -7,6 +7,7 @@ import {
   finishEscrow,
   acceptNft,
   getPendingEscrows,
+  getEscrowsByBuyer,
   getAccountNFTs,
 } from "../services/escrowService";
 
@@ -30,22 +31,22 @@ router.get("/address-info/:address", async (req: Request, res: Response): Promis
 /**
  * POST /api/escrow/prepare-payment
  * Returns an unsigned Payment tx for the buyer to sign with their Otsu wallet.
- * Body: { buyerAddress, amountRlusd }
+ * Body: { buyerAddress, amountXrp }
  * Response: { tx }
  */
 router.post("/prepare-payment", async (req: Request, res: Response): Promise<void> => {
-  const { buyerAddress, amountRlusd } = req.body as { buyerAddress?: unknown; amountRlusd?: unknown };
+  const { buyerAddress, amountXrp } = req.body as { buyerAddress?: unknown; amountXrp?: unknown };
   if (!buyerAddress || typeof buyerAddress !== "string") {
     res.status(400).json({ error: "Missing required field: buyerAddress" });
     return;
   }
-  if (typeof amountRlusd !== "number" || amountRlusd <= 0) {
-    res.status(400).json({ error: "Missing or invalid field: amountRlusd" });
+  if (typeof amountXrp !== "number" || amountXrp <= 0) {
+    res.status(400).json({ error: "Missing or invalid field: amountXrp" });
     return;
   }
   try {
-    const tx = await preparePayment(buyerAddress, amountRlusd);
-    res.json({ tx });
+    const { tx, reserveOverheadXrp } = await preparePayment(buyerAddress, amountXrp);
+    res.json({ tx, reserveOverheadXrp });
   } catch (err) {
     logger.error({ err }, "escrow: prepare payment failed");
     res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
@@ -57,16 +58,16 @@ router.post("/prepare-payment", async (req: Request, res: Response): Promise<voi
  * Submits the buyer's signed Payment, then creates EscrowCreate from the issuer account.
  * The WASM FinishFunction is embedded and backend-signed — no buyer seed required.
  *
- * Body: { paymentTxBlob, buyerAddress, sellerAddress, nftId, amountRlusd }
+ * Body: { paymentTxBlob, buyerAddress, sellerAddress, nftId, amountXrp }
  * Response: { escrowSequence, hash, escrowAccount, buyerAddress, cancelAfter }
  */
 router.post("/create", async (req: Request, res: Response): Promise<void> => {
-  const { paymentTxBlob, buyerAddress, sellerAddress, nftId, amountRlusd } = req.body as {
+  const { paymentTxBlob, buyerAddress, sellerAddress, nftId, amountXrp } = req.body as {
     paymentTxBlob?: unknown;
     buyerAddress?: unknown;
     sellerAddress?: unknown;
     nftId?: unknown;
-    amountRlusd?: unknown;
+    amountXrp?: unknown;
   };
 
   if (!paymentTxBlob || typeof paymentTxBlob !== "string") {
@@ -85,14 +86,14 @@ router.post("/create", async (req: Request, res: Response): Promise<void> => {
     res.status(400).json({ error: "Missing required field: nftId" });
     return;
   }
-  if (typeof amountRlusd !== "number" || amountRlusd <= 0) {
-    res.status(400).json({ error: "Missing or invalid field: amountRlusd (must be a positive number)" });
+  if (typeof amountXrp !== "number" || amountXrp <= 0) {
+    res.status(400).json({ error: "Missing or invalid field: amountXrp (must be a positive number)" });
     return;
   }
 
   try {
-    logger.info({ buyerAddress, sellerAddress, nftId, amountRlusd }, "escrow: create request");
-    const result = await createEscrow({ paymentTxBlob, buyerAddress, sellerAddress, nftId, amountRlusd });
+    logger.info({ buyerAddress, sellerAddress, nftId, amountXrp }, "escrow: create request");
+    const result = await createEscrow({ paymentTxBlob, buyerAddress, sellerAddress, nftId, amountXrp });
     res.json(result);
   } catch (err) {
     logger.error({ err }, "escrow: create failed");
@@ -179,6 +180,22 @@ router.get("/pending/:address", async (req: Request, res: Response): Promise<voi
     res.json({ escrows });
   } catch (err) {
     logger.error({ address, err }, "escrow: get pending failed");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+  }
+});
+
+/**
+ * GET /api/escrow/by-buyer/:address
+ * Returns on-chain escrows created by the notary that belong to the given buyer address
+ * (matched via the BUYER memo embedded in each EscrowCreate transaction).
+ */
+router.get("/by-buyer/:address", async (req: Request, res: Response): Promise<void> => {
+  const { address } = req.params;
+  try {
+    const escrows = await getEscrowsByBuyer(address);
+    res.json({ escrows });
+  } catch (err) {
+    logger.error({ address, err }, "escrow: get by-buyer failed");
     res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
   }
 });

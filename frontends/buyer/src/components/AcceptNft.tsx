@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { nftApi } from "../api/nft";
 import { escrowLog } from "../logger";
-import { Stepper } from "./Stepper";
-import { Copyable } from "./Copyable";
-import { useToast } from "../context/ToastContext";
+import { Stepper } from "@shared/components/Stepper";
+import { Copyable } from "@shared/components/Copyable";
+import { useToast } from "@shared/context/ToastContext";
 
 interface Props {
   buyerAddress: string;

@@ -38,8 +38,10 @@ export interface AcceptNftResult {
 export interface EscrowObject {
   Account: string;
   Destination: string;
-  Amount: string;
+  Amount: string; // XRP drops
   Sequence: number;
+  CancelAfter?: number; // Ripple epoch seconds
+  Memos?: Array<{ Memo: { MemoType?: string; MemoData?: string } }>;
   [key: string]: unknown;
 }
 
@@ -49,15 +51,15 @@ export interface NftItem {
 }
 
 export const escrowApi = {
-  preparePayment: (params: { buyerAddress: string; amountRlusd: number }) =>
-    post<{ tx: Record<string, unknown> }>("/prepare-payment", params),
+  preparePayment: (params: { buyerAddress: string; amountXrp: number }) =>
+    post<{ tx: Record<string, unknown>; reserveOverheadXrp: number }>("/prepare-payment", params),
 
   create: (params: {
     paymentTxBlob: string;
     buyerAddress: string;
     sellerAddress: string;
     nftId: string;
-    amountRlusd: number;
+    amountXrp: number;
   }) => post<CreateEscrowResult>("/create", params),
 
   finish: (params: { escrowSequence: number; nftId: string; offerSequence: number }) =>
@@ -65,6 +67,9 @@ export const escrowApi = {
 
   pending: (address: string) =>
     get<{ escrows: EscrowObject[] }>(`/pending/${address}`),
+
+  byBuyer: (address: string) =>
+    get<{ escrows: EscrowObject[] }>(`/by-buyer/${address}`),
 
   nfts: (address: string) =>
     get<{ nfts: NftItem[] }>(`/nfts/${address}`),

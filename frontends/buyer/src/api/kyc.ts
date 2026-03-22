@@ -35,4 +35,14 @@ export const kycApi = {
   },
 
   streamUrl: (verificationId: string): string => `${BASE}/stream/${verificationId}`,
+
+  deleteCredentials: async (address: string): Promise<void> => {
+    const res = await fetch(`${BASE}/delete`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ address }),
+    });
+    const data = await res.json() as { error?: string };
+    if (!res.ok) throw new Error(data.error ?? "Failed to delete credentials");
+  },
 };

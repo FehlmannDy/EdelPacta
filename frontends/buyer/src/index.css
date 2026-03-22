@@ -271,6 +271,65 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
   margin: 1rem auto;
 }
 
+/* ── Skeleton ───────────────────────────────────────────── */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, #e0dbd2 25%, #eae5db 50%, #e0dbd2 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+  border-radius: 2px;
+}
+.skeleton-card {
+  background: #faf7f2;
+  border: 1px solid #c8bfb2;
+  padding: 1rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.skeleton-line         { height: 0.7rem; }
+.skeleton-line--short  { width: 35%; }
+.skeleton-line--medium { width: 60%; }
+.skeleton-line--long   { width: 90%; }
+
+/* ── Modal ──────────────────────────────────────────────── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(26, 18, 10, 0.45);
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+.modal {
+  background: #faf7f2;
+  border: 1px solid #c8bfb2;
+  padding: 2rem;
+  max-width: 400px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+.modal h3 {
+  font-family: system-ui, sans-serif;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: #6b1728;
+}
+.modal-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+}
+
 /* ── KYC ────────────────────────────────────────────────── */
 
 .kyc-overlay { display: flex; justify-content: center; padding: 2.5rem 1rem; }
@@ -536,18 +595,6 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
   color: #9b2a2a; letter-spacing: 0.02em; text-transform: none; font-weight: 400;
 }
 
-/* ── Copyable ───────────────────────────────────────────── */
-.copyable { cursor: pointer; position: relative; display: inline; word-break: break-all; border-bottom: 1px dashed #b8963e; transition: color 0.15s; }
-.copyable:hover { color: #6b1728; }
-.copy-badge {
-  position: absolute; left: 50%; transform: translateX(-50%) translateY(-4px);
-  bottom: calc(100% + 4px); background: #6b1728; color: #faf7f2;
-  font-family: system-ui, sans-serif; font-size: 0.65rem; font-weight: 700;
-  letter-spacing: 0.1em; padding: 0.2rem 0.55rem; white-space: nowrap;
-  pointer-events: none; opacity: 0; transition: opacity 0.15s, transform 0.15s;
-}
-.copy-badge--visible { opacity: 1; transform: translateX(-50%) translateY(0); }
-
 /* ── Responsive ─────────────────────────────────────────── */
 @media (max-width: 600px) {
   .app { padding: 1rem 0.75rem; }
@@ -556,6 +603,9 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
   .wallet-actions { width: 100%; }
   .wallet-actions button { flex: 1; }
   button { width: 100%; }
+  .modal { padding: 1.25rem; }
+  .modal-actions { flex-direction: column-reverse; }
+  .modal-actions button { width: 100%; }
   .toast-container { right: 0.75rem; left: 0.75rem; }
   .toast { min-width: unset; max-width: 100%; }
   .stepper { gap: 0.25rem; }

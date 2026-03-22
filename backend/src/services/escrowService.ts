@@ -171,22 +171,38 @@ async function activateBuyerAccount(client: Client, issuer: Wallet, buyerAddress
 
 export async function preparePayment(
   buyerAddress: string,
-  amountRlusd: number
-): Promise<Record<string, unknown>> {
-  const issuer = getNotaireWallet();
+  amountXrp: number
+): Promise<{ tx: Record<string, unknown>; reserveOverheadXrp: number }> {
+  const issuer = getOracleWallet();
+  const wasmBytes = readFileSync(WASM_PATH).length;
+  const reserveBlocks = Math.ceil(wasmBytes / 500);
+
   const client = new Client(ENDPOINT);
   await client.connect();
   try {
-    const { sequence, medianFee, lastLedger } = await autofillBase(client, buyerAddress);
+    const [{ sequence, medianFee, lastLedger }, serverInfo] = await Promise.all([
+      autofillBase(client, buyerAddress),
+      client.request({ command: "server_info" }),
+    ]);
+
+    const ownerReserveXrp = (
+      (serverInfo.result as Record<string, unknown>)["info"] as Record<string, unknown>
+    )["validated_ledger"] as Record<string, number>;
+    const reserveOverheadXrp = reserveBlocks * ownerReserveXrp["reserve_inc_xrp"];
+    const totalDrops = Math.round(amountXrp * 1_000_000) + Math.round(reserveOverheadXrp * 1_000_000);
+
     return {
-      TransactionType: "Payment",
-      Account: buyerAddress,
-      Destination: issuer.address,
-      Amount: String(Math.round(amountRlusd * 1_000_000)),
-      Sequence: sequence,
-      LastLedgerSequence: lastLedger,
-      Fee: String(Math.max(medianFee, 12)),
-      NetworkID: NETWORK_ID,
+      tx: {
+        TransactionType: "Payment",
+        Account: buyerAddress,
+        Destination: issuer.address,
+        Amount: String(totalDrops),
+        Sequence: sequence,
+        LastLedgerSequence: lastLedger,
+        Fee: String(Math.max(medianFee, 12)),
+        NetworkID: NETWORK_ID,
+      },
+      reserveOverheadXrp,
     };
   } finally {
     await client.disconnect();
@@ -200,7 +216,7 @@ export interface CreateEscrowParams {
   buyerAddress: string;
   sellerAddress: string;
   nftId: string;
-  amountRlusd: number;
+  amountXrp: number;
 }
 
 export interface CreateEscrowResult {
@@ -212,12 +228,12 @@ export interface CreateEscrowResult {
 }
 
 export async function createEscrow(params: CreateEscrowParams): Promise<CreateEscrowResult> {
-  const { paymentTxBlob, buyerAddress, sellerAddress, nftId, amountRlusd } = params;
+  const { paymentTxBlob, buyerAddress, sellerAddress, nftId, amountXrp } = params;
   const issuer = getNotaireWallet();
 
   const wasmHex = readFileSync(WASM_PATH).toString("hex").toUpperCase();
   logger.info(
-    { wasmBytes: wasmHex.length / 2, buyerAddress, escrowAccount: issuer.address, sellerAddress, nftId, amountRlusd },
+    { wasmBytes: wasmHex.length / 2, buyerAddress, escrowAccount: issuer.address, sellerAddress, nftId, amountXrp },
     "escrow: creating"
   );
 
@@ -248,7 +264,7 @@ export async function createEscrow(params: CreateEscrowParams): Promise<CreateEs
       TransactionType: "EscrowCreate",
       Account: issuer.address,
       Destination: sellerAddress,
-      Amount: String(Math.round(amountRlusd * 1_000_000)),
+      Amount: String(Math.round(amountXrp * 1_000_000)),
       CancelAfter: cancelAfter,
       FinishFunction: wasmHex,
       Flags: 0,
@@ -400,6 +416,41 @@ export async function getPendingEscrows(address: string): Promise<Record<string,
       ledger_index: "validated",
     });
     return (response.result.account_objects ?? []) as Record<string, unknown>[];
+  } catch (_) {
+    return [];
+  } finally {
+    await client.disconnect();
+  }
+}
+
+/**
+ * Returns all on-chain escrows created by the notary/issuer that belong to a given buyer.
+ * Matches by the BUYER memo embedded in each EscrowCreate transaction.
+ */
+export async function getEscrowsByBuyer(buyerAddress: string): Promise<Record<string, unknown>[]> {
+  const issuer = getOracleWallet();
+  const buyerMemoType = toHex("BUYER");
+  const buyerMemoData = toHex(buyerAddress);
+
+  const client = new Client(ENDPOINT);
+  await client.connect();
+  try {
+    const response = await client.request({
+      command: "account_objects",
+      account: issuer.address,
+      type: "escrow",
+      ledger_index: "validated",
+    });
+    const all = (response.result.account_objects ?? []) as Record<string, unknown>[];
+    return all.filter((escrow) => {
+      const memos = escrow["Memos"] as Array<{ Memo: { MemoType?: string; MemoData?: string } }> | undefined;
+      if (!memos) return false;
+      return memos.some(
+        (m) =>
+          m.Memo.MemoType?.toUpperCase() === buyerMemoType &&
+          m.Memo.MemoData?.toUpperCase() === buyerMemoData
+      );
+    });
   } catch (_) {
     return [];
   } finally {

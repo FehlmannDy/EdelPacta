@@ -10,27 +10,12 @@ interface Props {
   onStep?: (step: KYCStep) => void;
 }
 
-const STEP_LABELS: Record<KYCStep, string> = {
-  checking: "Checking status…",
-  start: "Ready to verify",
-  scanning: "Scan QR code",
-  issuing: "Issuing credential",
-  accepting: "Sign acceptance",
-  done: "Verified",
-  error: "Error",
-};
-
-const STEP_PROGRESS: Record<KYCStep, number> = {
-  checking: 5,
-  start: 10,
-  scanning: 40,
-  issuing: 70,
-  accepting: 85,
-  done: 100,
-  error: 0,
-};
-
-const ORDERED_STEPS: KYCStep[] = ["checking", "start", "scanning", "issuing", "accepting", "done"];
+function getProgress(step: KYCStep): number {
+  if (step === "scanning")  return 40;
+  if (step === "issuing")   return 70;
+  if (step === "accepting") return 85;
+  return 10;
+}
 
 export function KYCGate({ address, sign, children, onStep }: Props) {
   const submit = (txBlob: string) => nftApi.submit(txBlob);
@@ -44,91 +29,125 @@ export function KYCGate({ address, sign, children, onStep }: Props) {
   }, [kyc.step]);
 
   if (kyc.step === "done") return <>{children}</>;
-  if (kyc.step === "checking") return <div className="spinner" style={{ marginTop: "3rem" }} />;
 
-  const progress = STEP_PROGRESS[kyc.step];
+  if (kyc.step === "checking") {
+    return (
+      <div className="kyc-overlay">
+        <div className="kyc-checking">
+          <div className="spinner" />
+          <p className="kyc-checking-text">Checking credentials…</p>
+        </div>
+      </div>
+    );
+  }
+
+  const progress = getProgress(kyc.step);
 
   return (
     <div className="kyc-overlay">
       <div className="form-card kyc-card">
-        <h2>Identity Verification</h2>
 
-        <div className="progress-bar-wrap">
-          <div className="progress-bar-fill" style={{ width: `${progress}%` }} />
+        {/* Header */}
+        <div className="kyc-card-header">
+          <h2>Identity Verification</h2>
+          <p className="kyc-tagline">One-time check required to use EdelPacta</p>
         </div>
 
-        <div className="kyc-steps-row">
-          {ORDERED_STEPS.filter((s) => s !== "checking" && s !== "done").map((s) => {
-            const idx = ORDERED_STEPS.indexOf(s);
-            const curIdx = ORDERED_STEPS.indexOf(kyc.step);
-            const done = curIdx > idx;
-            const active = kyc.step === s;
-            return (
-              <span key={s} className={`kyc-step-label${done ? " kyc-step-label--done" : active ? " kyc-step-label--active" : ""}`}>
-                {done ? "✓ " : ""}{STEP_LABELS[s]}
-              </span>
-            );
-          })}
-        </div>
-
-        <p className="info" style={{ fontSize: "0.85rem" }}>
-          A one-time KYC check is required to purchase property on EdelPacta.
-          Once verified, your credential is stored on-chain and won't be asked again.
-        </p>
-
-        {kyc.step === "start" && (
-          <button
-            onClick={() => { setStarting(true); kyc.startKYC(); }}
-            disabled={starting}
-          >
-            {starting ? (
-              <><span className="spinner spinner--sm spinner--inline" /> Starting…</>
-            ) : "Start KYC Verification"}
-          </button>
-        )}
-
-        {kyc.step === "scanning" && !kyc.verificationUrl && (
-          <div className="kyc-scan-loading">
-            <div className="spinner" />
-            <p className="info" style={{ fontSize: "0.82rem" }}>Generating verification code…</p>
+        {/* Progress bar */}
+        {kyc.step !== "error" && (
+          <div className="progress-bar-wrap">
+            <div className="progress-bar-fill" style={{ width: `${progress}%` }} />
           </div>
         )}
 
-        {kyc.step === "scanning" && kyc.verificationUrl && (
-          <>
-            <p className="info" style={{ fontSize: "0.85rem" }}>
-              Scan the QR code with your <strong>SWIYU</strong> or <strong>eID wallet app</strong>.
+        {/* ── START ── */}
+        {kyc.step === "start" && (
+          <div className="kyc-start">
+            <p className="info" style={{ fontSize: "0.88rem", lineHeight: 1.75 }}>
+              Before purchasing property, we need to verify your identity using your Swiss digital credentials.
             </p>
-            <div className="kyc-qr-frame">
-              <QRCodeSVG value={kyc.verificationUrl} size={200} bgColor="#ffffff" fgColor="#1a120a" />
-            </div>
-            <div className="kyc-scan-status">
-              <div className="spinner spinner--sm" />
-              <span>{kyc.streamState ?? "Waiting for verification…"}</span>
-            </div>
-          </>
+            <ul className="kyc-requirements">
+              <li>
+                <span className="kyc-req-icon">📱</span>
+                <span>Your <strong>SWIYU</strong> or <strong>eID</strong> wallet app installed on your phone</span>
+              </li>
+              <li>
+                <span className="kyc-req-icon">🪪</span>
+                <span>A valid <strong>Swiss e-ID</strong> credential</span>
+              </li>
+            </ul>
+            <button
+              onClick={() => { setStarting(true); kyc.startKYC(); }}
+              disabled={starting}
+            >
+              {starting ? (
+                <><span className="spinner spinner--sm spinner--inline" /> Starting…</>
+              ) : "Begin Verification"}
+            </button>
+          </div>
         )}
 
+        {/* ── SCANNING ── */}
+        {kyc.step === "scanning" && (
+          <div className="kyc-scan-panel">
+            <p className="kyc-scan-subtitle">Verify your Swiss identity</p>
+            {!kyc.verificationUrl ? (
+              <div className="kyc-scan-loading">
+                <div className="spinner" />
+                <p className="info" style={{ fontSize: "0.82rem" }}>Generating verification code…</p>
+              </div>
+            ) : (
+              <>
+                <p className="info" style={{ fontSize: "0.82rem", lineHeight: 1.7 }}>
+                  Open your <strong>SWIYU</strong> or <strong>eID wallet app</strong> and scan the code below.
+                </p>
+                <div className="kyc-qr-frame">
+                  <QRCodeSVG value={kyc.verificationUrl} size={196} bgColor="#faf7f2" fgColor="#1a120a" />
+                </div>
+                <div className="kyc-scan-status">
+                  <div className="spinner spinner--sm" />
+                  <span>{kyc.streamState ?? "Waiting for scan…"}</span>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ── ISSUING ── */}
         {kyc.step === "issuing" && (
-          <>
-            <p className="info">Identity verified. Issuing credential on XRPL…</p>
+          <div className="kyc-status-panel">
+            <div className="kyc-status-circle kyc-status-circle--ok">&#9741;</div>
+            <p className="kyc-status-title">Verification Confirmed</p>
+            <p className="info" style={{ fontSize: "0.85rem", lineHeight: 1.7 }}>
+              Anchoring your identity credential on the XRP Ledger…
+            </p>
             <div className="spinner" />
-          </>
+          </div>
         )}
 
+        {/* ── ACCEPTING ── */}
         {kyc.step === "accepting" && (
-          <>
-            <p className="info">Please sign the credential acceptance in your Otsu wallet.</p>
+          <div className="kyc-status-panel">
+            <div className="kyc-status-circle kyc-status-circle--sign">&#9998;</div>
+            <p className="kyc-status-title">Signature Required</p>
+            <p className="info" style={{ fontSize: "0.85rem", lineHeight: 1.7 }}>
+              A credential acceptance request has been sent to your{" "}
+              <strong>Otsu wallet</strong>. Please approve it to continue.
+            </p>
             <div className="spinner" />
-          </>
+          </div>
         )}
 
+        {/* ── ERROR ── */}
         {kyc.step === "error" && (
-          <>
-            <p className="error">{kyc.error}</p>
+          <div className="kyc-error-panel">
+            <div className="kyc-status-circle kyc-status-circle--error">&#10005;</div>
+            <p className="kyc-status-title">Verification Failed</p>
+            <p className="error" style={{ fontSize: "0.85rem", lineHeight: 1.6 }}>{kyc.error}</p>
             <button onClick={kyc.retry}>Try Again</button>
-          </>
+          </div>
         )}
+
       </div>
     </div>
   );

@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { escrowApi, CreateEscrowResult } from "../api/escrow";
 import { escrowLog } from "../logger";
-import { Stepper } from "./Stepper";
-import { Copyable } from "./Copyable";
-import { useToast } from "../context/ToastContext";
+import { Stepper } from "@shared/components/Stepper";
+import { Copyable } from "@shared/components/Copyable";
+import { useToast } from "@shared/context/ToastContext";
 
 interface Props {
   escrow: CreateEscrowResult & { nftId: string };
@@ -80,7 +80,7 @@ export function EscrowFinish({ escrow, onFinished }: Props) {
       </p>
 
       <div className="result" style={{ marginBottom: 0 }}>
-        <p><strong>Compte escrow</strong><br /><Copyable text={escrow.escrowAccount} truncate={10} /></p>
+        <p><strong>Escrow Account</strong><br /><Copyable text={escrow.escrowAccount} truncate={10} /></p>
         <p><strong>Escrow Sequence</strong><br />{escrow.escrowSequence}</p>
         <p><strong>NFT ID</strong><br /><Copyable text={escrow.nftId} truncate={10} /></p>
       </div>
