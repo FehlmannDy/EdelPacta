@@ -2,17 +2,10 @@ import { useState, useEffect } from "react";
 import { escrowApi, EscrowObject } from "../api/escrow";
 import { Copyable } from "@shared/components/Copyable";
 import { SkeletonCard } from "@shared/components/SkeletonCard";
-
-// Ripple epoch starts 2000-01-01T00:00:00Z
-const RIPPLE_EPOCH = 946684800;
+import { xrplEpochToDate, dropsToXrp } from "@shared/utils/xrplEpoch";
 
 function formatExpiry(cancelAfter: number): string {
-  const ms = (cancelAfter + RIPPLE_EPOCH) * 1000;
-  return new Date(ms).toLocaleString();
-}
-
-function dropsToXrp(drops: string): string {
-  return (parseInt(drops, 10) / 1_000_000).toLocaleString();
+  return xrplEpochToDate(cancelAfter).toLocaleString();
 }
 
 function hexToUtf8(hex: string): string {
@@ -97,7 +90,7 @@ export function PendingEscrows({ address, onResume }: Props) {
             <div key={e.Sequence} className="result">
               <p><strong>Escrow Account</strong><br /><Copyable text={e.Account} truncate={12} /></p>
               <p><strong>Seller (Destination)</strong><br /><Copyable text={e.Destination} truncate={12} /></p>
-              <p><strong>Amount Locked</strong><br />{dropsToXrp(e.Amount)} XRP — Sequence #{e.Sequence}</p>
+              <p><strong>Amount Locked</strong><br />{dropsToXrp(e.Amount)} — Sequence #{e.Sequence}</p>
               {nftId && <p><strong>NFT ID</strong><br /><Copyable text={nftId} truncate={12} /></p>}
               {e.CancelAfter && (
                 <p><strong>Expires</strong><br />{formatExpiry(e.CancelAfter)}</p>

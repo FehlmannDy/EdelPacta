@@ -3,7 +3,7 @@ import { useWallet } from "@shared/hooks/useWallet";
 import { WalletBar } from "@shared/components/WalletBar";
 import { KYCGate } from "./components/KYCGate";
 import { OwnedNFTs, OwnedNFTsHandle } from "./components/OwnedNFTs";
-import { IncomingOffers, IncomingOffersHandle } from "./components/IncomingOffers";
+import { IncomingOffers } from "./components/IncomingOffers";
 import { KYCStep } from "./hooks/useKYC";
 import { kycApi } from "./api/kyc";
 
@@ -35,7 +35,6 @@ export default function App() {
   const [resettingKYC, setResettingKYC] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
   const ownedRef = useRef<OwnedNFTsHandle>(null);
-  const incomingRef = useRef<IncomingOffersHandle>(null);
 
 
   const handleResetKYC = async () => {
@@ -100,7 +99,6 @@ export default function App() {
           <KYCGate key={kycKey} address={wallet.address!} sign={wallet.sign} onStep={setKycStep}>
             <OwnedNFTs ref={ownedRef} address={wallet.address!} sign={wallet.sign} />
             <IncomingOffers
-              ref={incomingRef}
               address={wallet.address!}
               sign={wallet.sign}
               onAccepted={() => ownedRef.current?.load()}

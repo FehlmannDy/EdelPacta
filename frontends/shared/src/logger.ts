@@ -28,6 +28,7 @@ function makeLogger(scope: string) {
   };
 }
 
-export const walletLog = makeLogger("wallet");
-export const kycLog    = makeLogger("kyc");
-export const nftLog    = makeLogger("nft");
+export const walletLog  = makeLogger("wallet");
+export const kycLog     = makeLogger("kyc");
+export const nftLog     = makeLogger("nft");
+export const escrowLog  = makeLogger("escrow");

@@ -9,6 +9,7 @@ import {
   prepareBurnTx,
   prepareTransferOfferTx,
   prepareAcceptOfferTx,
+  prepareCancelOfferTx,
   submitSignedTx,
   getAccountNFTs,
   getIncomingOffers,
@@ -265,6 +266,34 @@ router.post("/prepare/accept-offer", async (req: Request, res: Response): Promis
     res.json(tx);
   } catch (err) {
     logger.error({ account, offerId, err }, "nft: prepare accept offer tx failed");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+  }
+});
+
+/**
+ * POST /api/nft/prepare/cancel-offer
+ * Returns an unsigned NFTokenCancelOffer transaction.
+ * Body: { account, offerIds, networkUrl? }
+ */
+router.post("/prepare/cancel-offer", async (req: Request, res: Response): Promise<void> => {
+  const { account, offerIds, networkUrl } = req.body;
+
+  if (!account || typeof account !== "string") {
+    res.status(400).json({ error: "Missing required field: account" });
+    return;
+  }
+  if (!Array.isArray(offerIds) || offerIds.length === 0 || offerIds.some((id) => typeof id !== "string")) {
+    res.status(400).json({ error: "Missing or invalid field: offerIds (must be a non-empty array of strings)" });
+    return;
+  }
+
+  try {
+    logger.info({ account, offerIds }, "nft: preparing cancel offer tx");
+    const tx = await prepareCancelOfferTx({ account, offerIds, networkUrl });
+    logger.info({ account, offerIds }, "nft: cancel offer tx prepared");
+    res.json(tx);
+  } catch (err) {
+    logger.error({ account, offerIds, err }, "nft: prepare cancel offer tx failed");
     res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
   }
 });

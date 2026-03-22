@@ -1,15 +1,6 @@
-const BASE = "/api/nft";
+import { makeApiClient } from "@shared/utils/apiClient";
 
-async function post<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? `Request failed: ${res.status}`);
-  return data as T;
-}
+const { post, get } = makeApiClient("/api/nft");
 
 export interface PreparedTx {
   [key: string]: unknown;
@@ -116,4 +107,7 @@ export const nftApi = {
         if (!r.ok) throw new Error(data.error ?? "Failed to fetch offer details");
         return data as OfferDetails;
       }),
+
+  outgoingOffers: (address: string) =>
+    get<{ offers: NFTOffer[] }>(`/offers/outgoing/${address}`).then((r) => r.offers),
 };

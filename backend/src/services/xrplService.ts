@@ -259,11 +259,6 @@ export interface IncomingOffer {
   expiration: number | null;
 }
 
-/** Derive an XRPL address from a family seed without connecting to the network. */
-export function deriveAddress(seed: string): string {
-  return Wallet.fromSeed(seed).address;
-}
-
 function isObjectNotFound(err: unknown): boolean {
   if (!err || typeof err !== "object") return false;
   const data = (err as Record<string, unknown>)["data"];
@@ -480,6 +475,25 @@ export async function prepareAcceptOfferTx(params: PrepareAcceptOfferParams): Pr
       TransactionType: "NFTokenAcceptOffer",
       Account: account,
       NFTokenSellOffer: offerId,
+    };
+    return await client.autofill(tx) as unknown as Record<string, unknown>;
+  });
+}
+
+export interface PrepareCancelOfferParams {
+  account: string;
+  offerIds: string[];
+  networkUrl?: string;
+}
+
+export async function prepareCancelOfferTx(params: PrepareCancelOfferParams): Promise<Record<string, unknown>> {
+  const { account, offerIds, networkUrl = DEFAULT_NETWORK } = params;
+
+  return withClient(networkUrl, async (client) => {
+    const tx = {
+      TransactionType: "NFTokenCancelOffer" as const,
+      Account: account,
+      NFTokenOffers: offerIds,
     };
     return await client.autofill(tx) as unknown as Record<string, unknown>;
   });

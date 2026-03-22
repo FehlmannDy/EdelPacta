@@ -1,5 +1,5 @@
 import { useState, useEffect, useImperativeHandle, forwardRef } from "react";
-import { escrowApi, NftItem } from "../api/escrow";
+import { nftApi, NftItem } from "../api/nft";
 import { Copyable } from "@shared/components/Copyable";
 import { SkeletonCard } from "@shared/components/SkeletonCard";
 
@@ -19,7 +19,7 @@ export const OwnedNFTs = forwardRef<OwnedNFTsHandle, Props>(({ address }, ref) =
   const load = async () => {
     setLoading(true);
     try {
-      const { nfts: list } = await escrowApi.nfts(address);
+      const list = await nftApi.list(address);
       setNfts(list);
     } catch (_) {
       // silent

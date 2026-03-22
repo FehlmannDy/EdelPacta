@@ -130,11 +130,6 @@ export function getOracleWallet(): Wallet {
   return Wallet.fromSeed(seed);
 }
 
-/** @deprecated Use getOracleWallet() */
-export function getNotaireWallet(): Wallet {
-  return getOracleWallet();
-}
-
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export async function getAddressInfo(address: string): Promise<{ address: string; balance: string }> {
@@ -229,7 +224,7 @@ export interface CreateEscrowResult {
 
 export async function createEscrow(params: CreateEscrowParams): Promise<CreateEscrowResult> {
   const { paymentTxBlob, buyerAddress, sellerAddress, nftId, amountXrp } = params;
-  const issuer = getNotaireWallet();
+  const issuer = getOracleWallet();
 
   const wasmHex = readFileSync(WASM_PATH).toString("hex").toUpperCase();
   logger.info(
@@ -304,7 +299,7 @@ export interface FinishEscrowResult {
 
 export async function finishEscrow(params: FinishEscrowParams): Promise<FinishEscrowResult> {
   const { escrowSequence, nftId, offerSequence } = params;
-  const notaire = getNotaireWallet();
+  const notaire = getOracleWallet();
   const oracle = getOracleWallet();
 
   // The escrow Account is the issuer (notaire) — same wallet

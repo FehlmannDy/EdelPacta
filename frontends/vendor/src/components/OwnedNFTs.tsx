@@ -14,7 +14,7 @@ interface Props {
   sign: (tx: Record<string, unknown>) => Promise<string>;
 }
 
-function SellOfferButton({ nft, address, sign }: { nft: NFToken; address: string; sign: (tx: Record<string, unknown>) => Promise<string> }) {
+function SellOfferButton({ nft, address, sign, existingOfferId }: { nft: NFToken; address: string; sign: (tx: Record<string, unknown>) => Promise<string>; existingOfferId?: string }) {
   const { addToast } = useToast();
   const [open, setOpen] = useState(false);
   const [buyerAddress, setBuyerAddress] = useState("");
@@ -23,6 +23,11 @@ function SellOfferButton({ nft, address, sign }: { nft: NFToken; address: string
   const [txStep, setTxStep] = useState(-1);
   const [offerDetails, setOfferDetails] = useState<OfferDetails | null>(null);
   const [showQR, setShowQR] = useState(false);
+
+  useEffect(() => {
+    if (!existingOfferId) return;
+    nftApi.getOffer(existingOfferId).then(setOfferDetails).catch(() => {});
+  }, [existingOfferId]);
 
   const validate = () => {
     if (!buyerAddress.trim() || !/^r[a-zA-Z0-9]{24,}$/.test(buyerAddress.trim())) {
@@ -187,6 +192,7 @@ export interface OwnedNFTsHandle { load: () => void; }
 
 export const OwnedNFTs = forwardRef<OwnedNFTsHandle, Props>(function OwnedNFTs({ address, sign }, ref) {
   const [nfts, setNfts] = useState<NFToken[]>([]);
+  const [offersByNft, setOffersByNft] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -194,8 +200,16 @@ export const OwnedNFTs = forwardRef<OwnedNFTsHandle, Props>(function OwnedNFTs({
     setLoading(true);
     setError(null);
     try {
-      const result = await nftApi.list(address);
+      const [result, outgoing] = await Promise.all([
+        nftApi.list(address),
+        nftApi.outgoingOffers(address),
+      ]);
       setNfts(result.nfts);
+      const map: Record<string, string> = {};
+      for (const o of outgoing) {
+        if (o.isSellOffer) map[o.nftokenId] = o.offerId;
+      }
+      setOffersByNft(map);
     } catch (err) {
       setError(translateXrplError(err));
     } finally {
@@ -257,7 +271,7 @@ export const OwnedNFTs = forwardRef<OwnedNFTsHandle, Props>(function OwnedNFTs({
             {nft.transferFee > 0 && ` · Fee ${nft.transferFee / 1000}%`}
           </p>
           <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "flex-start" }}>
-            <SellOfferButton nft={nft} address={address} sign={sign} />
+            <SellOfferButton nft={nft} address={address} sign={sign} existingOfferId={offersByNft[nft.nftokenId]} />
             <BurnButton nft={nft} address={address} sign={sign} onDone={load} />
           </div>
         </div>

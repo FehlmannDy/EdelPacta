@@ -5,6 +5,7 @@ import { Stepper } from "@shared/components/Stepper";
 import { Copyable } from "@shared/components/Copyable";
 import { SkeletonCard } from "@shared/components/SkeletonCard";
 import { useToast } from "@shared/context/ToastContext";
+import { TX_STEPS } from "@shared/utils/constants";
 
 interface Props {
   buyerAddress: string;
@@ -12,8 +13,6 @@ interface Props {
   sign: (tx: Record<string, unknown>) => Promise<string>;
   onAccepted: () => void;
 }
-
-const STEPS = ["Prepare", "Sign", "Submit"];
 
 function AcceptButton({
   offer, buyerAddress, sign, onDone, onAccepted,
@@ -55,7 +54,7 @@ function AcceptButton({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-      {step >= 0 && <Stepper steps={STEPS} current={step} />}
+      {step >= 0 && <Stepper steps={TX_STEPS} current={step} />}
       {txHash && (
         <p style={{ fontFamily: "system-ui", fontSize: "0.78rem", color: "#4a7a50", fontWeight: 600 }}>
           ✓ Deed received — Tx: <Copyable text={txHash} truncate={8} />

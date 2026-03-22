@@ -1,22 +1,6 @@
-const BASE = `${import.meta.env.VITE_API_BASE_URL ?? ""}/api/escrow`;
+import { makeApiClient } from "@shared/utils/apiClient";
 
-async function post<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error((data as { error?: string }).error ?? `Request failed: ${res.status}`);
-  return data as T;
-}
-
-async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`);
-  const data = await res.json();
-  if (!res.ok) throw new Error((data as { error?: string }).error ?? `Request failed: ${res.status}`);
-  return data as T;
-}
+const { post, get } = makeApiClient(`${import.meta.env.VITE_API_BASE_URL ?? ""}/api/escrow`);
 
 export interface CreateEscrowResult {
   escrowSequence: number;
@@ -46,11 +30,6 @@ export interface EscrowObject {
   [key: string]: unknown;
 }
 
-export interface NftItem {
-  nftokenId: string;
-  uri: string | null;
-}
-
 export const escrowApi = {
   preparePayment: (params: { buyerAddress: string; amountXrp: number }) =>
     post<{ tx: Record<string, unknown>; reserveOverheadXrp: number }>("/prepare-payment", params),
@@ -69,6 +48,4 @@ export const escrowApi = {
   byBuyer: (address: string) =>
     get<{ escrows: EscrowObject[] }>(`/by-buyer/${address}`),
 
-  nfts: (address: string) =>
-    get<{ nfts: NftItem[] }>(`/nfts/${address}`),
 };

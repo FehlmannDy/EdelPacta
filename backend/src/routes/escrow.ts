@@ -8,7 +8,6 @@ import {
   acceptNft,
   getPendingEscrows,
   getEscrowsByBuyer,
-  getAccountNFTs,
 } from "../services/escrowService";
 
 const router = Router();
@@ -196,21 +195,6 @@ router.get("/by-buyer/:address", async (req: Request, res: Response): Promise<vo
     res.json({ escrows });
   } catch (err) {
     logger.error({ address, err }, "escrow: get by-buyer failed");
-    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
-  }
-});
-
-/**
- * GET /api/escrow/nfts/:address
- * Returns NFTs held by the given address (property titles received).
- */
-router.get("/nfts/:address", async (req: Request, res: Response): Promise<void> => {
-  const { address } = req.params;
-  try {
-    const nfts = await getAccountNFTs(address);
-    res.json({ nfts });
-  } catch (err) {
-    logger.error({ address, err }, "escrow: get NFTs failed");
     res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
   }
 });
