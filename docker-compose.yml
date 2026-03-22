@@ -5,7 +5,7 @@ services:
       - "4001:4001"
       - "4001:4001/udp"
       - "127.0.0.1:5001:5001"
-      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:8090:8080"
     volumes:
       - ipfs_data:/data/ipfs
 
@@ -15,6 +15,8 @@ services:
       dockerfile: Dockerfile
     depends_on:
       - ipfs
+    ports:
+      - "8080:8080"
     environment:
       - NODE_ENV=production
       - ISSUER_SEED=${ISSUER_SEED}
@@ -24,6 +26,11 @@ services:
       - XRPL_NETWORK=${XRPL_NETWORK:-wss://wasm.devnet.rippletest.net:51233}
       - VERIFIER_BASE_URL=${VERIFIER_BASE_URL:-https://beta-verifier.edel-id.ch}
       - KUBO_URL=http://ipfs:5001
+      - ORACLE_SEED=${ORACLE_SEED}
+      - ESCROW_WASM_PATH=/app/contract/my_contract_devnet.wasm
+      - CORS_ORIGINS=http://localhost:3002
+    volumes:
+      - ./contract:/app/contract:ro
 
   notary:
     build:
@@ -46,6 +53,17 @@ services:
       - backend
     ports:
       - "3001:80"
+
+  buyer:
+    build:
+      context: ./frontends/buyer
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_BASE_URL=${VITE_BUYER_API_URL:-http://localhost:8080}
+    depends_on:
+      - backend
+    ports:
+      - "3002:3002"
 
 volumes:
   ipfs_data:
