@@ -31,20 +31,21 @@ Seller (Vendor)                 Notary                    Buyer
       |   Destination = Buyer ─────┼─────────────────────────┤
       |                            |                         | 5. Lock XRP in escrow
       |                            |                         |   WASM FinishFunction
-      |                            | 6. Sign EscrowFinish    |
-      |                            |   WASM verifies 6 conds |
+      |                            |                         | 6. Accept NFT sell offer
+      |                            |                         |   NFT title transferred
+      |                            | 7. Sign EscrowFinish    |
+      |                            |   WASM verifies 5 conds |
       |                            |   → Returns 1           |
-      | ← XRP released             |                         | ← NFT title received
+      | ← XRP released             |                         | (NFT already held)
 ```
 
-**The 6 conditions enforced inside the WASM Hook (Rust):**
+**The 5 conditions enforced inside the WASM Hook (Rust):**
 
 1. EscrowFinish submitted by the notary address
 2. Seller holds an accepted `SWIYU_KYC` credential on-chain
-3. Seller still owns the property NFT at finalization time
+3. Buyer already holds the property NFT at finalization time (ownership verified on-chain)
 4. Notary ECDSA signature on the NFT ID is valid
 5. Oracle ECDSA signature on the NFT ID is valid (independent co-signer)
-6. Seller's NFT sell offer is still active on-chain
 
 If any condition fails, the Hook returns `0` and the escrow stays locked. The buyer can cancel after a 2-hour timeout.
 
@@ -151,7 +152,7 @@ docker run -p 4001:4001 -p 5001:5001 -p 8080:8080 ipfs/kubo:latest
 3. Upload property metadata to IPFS
 4. Mint property title as an XLS-20 NFT — returns the `NFTokenID`
 5. Provide the NFT ID to the vendor (off-band)
-6. When the buyer is ready, sign the `EscrowFinish` transaction — the WASM Hook validates all 6 conditions and releases funds atomically
+6. When the buyer has accepted the NFT sell offer and holds the title, sign the `EscrowFinish` transaction — the WASM Hook verifies all 5 conditions (including buyer NFT ownership) and releases funds atomically
 
 ### Vendor (Seller)
 
@@ -172,10 +173,9 @@ docker run -p 4001:4001 -p 5001:5001 -p 8080:8080 ipfs/kubo:latest
    - Enter the vendor address, NFT ID, and XRP amount
    - Sign the `Payment` transaction (funds transferred to escrow account)
    - Backend creates `EscrowCreate` with the WASM binary embedded as `FinishFunction`
-4. Enter the vendor's Offer ID (or paste the Offer Sequence manually as fallback)
-5. Finalize settlement — backend submits `EscrowFinish` with 6 condition memos; WASM validates everything
-6. Sign `NFTokenAcceptOffer` — the property title NFT transfers to the buyer's address
-7. View owned property titles in the portfolio tab
+4. Enter the vendor's Offer ID and accept the NFT sell offer — sign `NFTokenAcceptOffer` to receive the property title NFT
+5. Finalize settlement — backend submits `EscrowFinish` with the buyer address memo; WASM verifies buyer holds the NFT and all 5 conditions, then releases funds to the seller
+6. View owned property titles in the portfolio tab
 
 > If the session is interrupted, the buyer can resume any pending escrow by reconnecting the wallet — active escrows are retrieved from on-chain transaction history via buyer address matching.
 
@@ -206,6 +206,6 @@ The `finish()` entry point reads condition data from 6 memos passed in the `Escr
 | 2 | `NOTARY_PUBKEY` — 33-byte compressed public key |
 | 3 | `ORACLE_SIG` — DER-encoded secp256k1 signature |
 | 4 | `ORACLE_PUBKEY` — 33-byte compressed public key |
-| 5 | `OFFER_SEQ` — 4-byte big-endian sell offer sequence |
+| 5 | `BUYER_ADDR` — 20-byte buyer AccountID |
 
 Returns `1` to release funds, `0` to keep the escrow locked.
