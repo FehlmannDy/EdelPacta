@@ -103,16 +103,16 @@ router.post("/create", async (req: Request, res: Response): Promise<void> => {
 /**
  * POST /api/escrow/finish
  * Submits EscrowFinish with 6 memos (uses ORACLE_SEED for all backend operations).
- * The WASM verifies: notaire identity, KYC, NFT ownership, dual signatures, NFT offer active.
+ * The WASM verifies: notaire identity, seller KYC, buyer NFT ownership, dual signatures.
  *
- * Body: { buyerAddress, escrowSequence, nftId, offerSequence }
+ * Body: { escrowSequence, nftId, buyerAddress }
  * Response: { hash }
  */
 router.post("/finish", async (req: Request, res: Response): Promise<void> => {
-  const { escrowSequence, nftId, offerSequence } = req.body as {
+  const { escrowSequence, nftId, buyerAddress } = req.body as {
     escrowSequence?: unknown;
     nftId?: unknown;
-    offerSequence?: unknown;
+    buyerAddress?: unknown;
   };
 
   if (typeof escrowSequence !== "number") {
@@ -123,14 +123,14 @@ router.post("/finish", async (req: Request, res: Response): Promise<void> => {
     res.status(400).json({ error: "Missing required field: nftId" });
     return;
   }
-  if (typeof offerSequence !== "number") {
-    res.status(400).json({ error: "Missing or invalid field: offerSequence (must be a number)" });
+  if (!buyerAddress || typeof buyerAddress !== "string") {
+    res.status(400).json({ error: "Missing required field: buyerAddress" });
     return;
   }
 
   try {
-    logger.info({ escrowSequence, nftId, offerSequence }, "escrow: finish request");
-    const result = await finishEscrow({ escrowSequence, nftId, offerSequence });
+    logger.info({ escrowSequence, nftId, buyerAddress }, "escrow: finish request");
+    const result = await finishEscrow({ escrowSequence, nftId, buyerAddress });
     res.json(result);
   } catch (err) {
     logger.error({ err }, "escrow: finish failed");

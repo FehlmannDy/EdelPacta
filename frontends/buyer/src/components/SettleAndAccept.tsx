@@ -13,7 +13,7 @@ interface Props {
   onDone: () => void;
 }
 
-const STEPS = ["Finaliser l'escrow", "Signer le transfert NFT", "Soumettre"];
+const STEPS = ["Signer le transfert NFT", "Soumettre le transfert", "Finaliser l'escrow"];
 
 export function SettleAndAccept({ escrow, buyerAddress, sign, onDone }: Props) {
   const { addToast } = useToast();
@@ -23,8 +23,6 @@ export function SettleAndAccept({ escrow, buyerAddress, sign, onDone }: Props) {
   const [settling, setSettling] = useState(false);
   const [txStep, setTxStep] = useState(-1);
   const [txHash, setTxHash] = useState<string | null>(null);
-  // Manual fallback: map offerId → offerSequence override (when auto-detection returns 0)
-  const [manualSeq, setManualSeq] = useState<Record<string, string>>({});
 
   const loadOffers = async () => {
     setLoadingOffers(true);
@@ -42,40 +40,34 @@ export function SettleAndAccept({ escrow, buyerAddress, sign, onDone }: Props) {
   useEffect(() => { loadOffers(); }, [buyerAddress, escrow.nftId]);
 
   const handleSettle = async (offer: NFTOffer) => {
-    const offerSequence = offer.sequence || Number(manualSeq[offer.offerId] ?? "0");
-    if (!offerSequence) {
-      addToast("Entrez l'Offer Sequence (visible chez le vendeur).", "error");
-      return;
-    }
     setSettling(true);
     setTxStep(0);
     setTxHash(null);
     try {
-      // Step 1 — EscrowFinish (signé côté backend)
-      escrowLog.info("finishing escrow", {
-        escrowSequence: escrow.escrowSequence,
-        nftId: escrow.nftId,
-        offerSequence,
-      });
-      await escrowApi.finish({
-        escrowSequence: escrow.escrowSequence,
-        nftId: escrow.nftId,
-        offerSequence,
-      });
-
-      // Step 2 — Préparer + signer l'acceptation de l'offre NFT
-      setTxStep(1);
+      // Step 1 — Signer l'acceptation de l'offre NFT (le NFT doit être dans le wallet avant EscrowFinish)
       escrowLog.info("preparing NFT accept offer", { offerId: offer.offerId });
       const tx = await nftApi.prepareAcceptOffer({ account: buyerAddress, offerId: offer.offerId });
       const txBlob = await sign(tx);
 
-      // Step 3 — Soumettre
-      setTxStep(2);
+      // Step 2 — Soumettre le transfert NFT
+      setTxStep(1);
       escrowLog.info("submitting NFT accept offer");
-      const res = await nftApi.submit(txBlob);
-      escrowLog.info("NFT accepted", res);
+      await nftApi.submit(txBlob);
 
-      setTxHash(res.txHash);
+      // Step 3 — EscrowFinish (le WASM vérifie que l'acheteur possède le NFT)
+      setTxStep(2);
+      escrowLog.info("finishing escrow", {
+        escrowSequence: escrow.escrowSequence,
+        nftId: escrow.nftId,
+        buyerAddress,
+      });
+      await escrowApi.finish({
+        escrowSequence: escrow.escrowSequence,
+        nftId: escrow.nftId,
+        buyerAddress,
+      });
+
+      setTxHash("done");
       addToast("Règlement complet — le titre de propriété est dans votre wallet.", "success");
       onDone();
     } catch (err) {
@@ -129,28 +121,6 @@ export function SettleAndAccept({ escrow, buyerAddress, sign, onDone }: Props) {
           <p><strong>NFToken ID</strong><br /><Copyable text={offer.nftokenId} truncate={10} /></p>
           <p><strong>Vendeur</strong><br /><Copyable text={offer.owner} truncate={10} /></p>
           <p><strong>Offer ID</strong><br /><Copyable text={offer.offerId} truncate={10} /></p>
-
-          {offer.sequence ? (
-            <p style={{ fontSize: "0.8rem", color: "#8a7a68" }}>
-              <strong>Offer Sequence</strong> {offer.sequence}
-            </p>
-          ) : (
-            <label style={{ fontSize: "0.85rem" }}>
-              Offer Sequence <span style={{ color: "#c0392b" }}>*</span>
-              <input
-                type="number"
-                min={1}
-                placeholder="Demandez au vendeur (ex: 12345)"
-                value={manualSeq[offer.offerId] ?? ""}
-                onChange={(e) => setManualSeq((prev) => ({ ...prev, [offer.offerId]: e.target.value }))}
-                disabled={settling}
-                style={{ fontFamily: "monospace", fontSize: "0.8rem" }}
-              />
-              <span style={{ fontSize: "0.75rem", color: "#8a7a68" }}>
-                Visible dans le résultat "Créer une Offre de Vente" chez le vendeur.
-              </span>
-            </label>
-          )}
 
           {txStep >= 0 && <Stepper steps={STEPS} current={txStep} />}
 

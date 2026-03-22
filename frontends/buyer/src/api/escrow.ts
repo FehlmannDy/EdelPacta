@@ -42,7 +42,7 @@ export const escrowApi = {
     amountXrp: number;
   }) => post<CreateEscrowResult>("/create", params),
 
-  finish: (params: { escrowSequence: number; nftId: string; offerSequence: number }) =>
+  finish: (params: { escrowSequence: number; nftId: string; buyerAddress: string }) =>
     post<FinishEscrowResult>("/finish", params),
 
   byBuyer: (address: string) =>

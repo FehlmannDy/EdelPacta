@@ -1,4 +1,11 @@
 services:
+  contract-builder:
+    build:
+      context: ./contract
+      dockerfile: Dockerfile
+    volumes:
+      - wasm_build:/output
+
   ipfs:
     image: ipfs/kubo:latest
     ports:
@@ -14,7 +21,10 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     depends_on:
-      - ipfs
+      ipfs:
+        condition: service_started
+      contract-builder:
+        condition: service_completed_successfully
     ports:
       - "8080:8080"
     environment:
@@ -27,10 +37,10 @@ services:
       - VERIFIER_BASE_URL=${VERIFIER_BASE_URL:-https://beta-verifier.edel-id.ch}
       - KUBO_URL=http://ipfs:5001
       - ORACLE_SEED=${ORACLE_SEED}
-      - ESCROW_WASM_PATH=/app/contract/my_contract_devnet.wasm
+      - ESCROW_WASM_PATH=/app/wasm/my_contract_devnet.wasm
       - CORS_ORIGINS=http://localhost:3002
     volumes:
-      - ./contract:/app/contract:ro
+      - wasm_build:/app/wasm:ro
 
   notary:
     build:
@@ -67,3 +77,4 @@ services:
 
 volumes:
   ipfs_data:
+  wasm_build:

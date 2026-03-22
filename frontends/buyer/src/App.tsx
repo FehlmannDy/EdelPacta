@@ -11,10 +11,10 @@ import { AcceptNft } from "./components/AcceptNft";
 import { OwnedNFTs, OwnedNFTsHandle } from "./components/OwnedNFTs";
 import { PendingEscrows } from "./components/PendingEscrows";
 
-type FlowStep = "create" | "finish" | "accept" | "done";
+type FlowStep = "create" | "accept" | "finish" | "done";
 
-const FLOW_LABELS = ["1. Lock XRP", "2. Finalize", "3. Accept NFT", "4. Done"];
-const FLOW_STEPS: FlowStep[] = ["create", "finish", "accept", "done"];
+const FLOW_LABELS = ["1. Lock XRP", "2. Accept NFT", "3. Finalize", "4. Done"];
+const FLOW_STEPS: FlowStep[] = ["create", "accept", "finish", "done"];
 
 function KYCBadge({ step }: { step: KYCStep | null }) {
   if (!step || step === "checking") return null;
@@ -46,14 +46,14 @@ export default function App() {
 
   const handleEscrowCreated = (result: CreateEscrowResult & { nftId: string; amountXrp: number }) => {
     setEscrowResult(result);
-    setFlowStep("finish");
-  };
-
-  const handleFinished = (_hash: string) => {
     setFlowStep("accept");
   };
 
   const handleNftAccepted = () => {
+    setFlowStep("finish");
+  };
+
+  const handleFinished = (_hash: string) => {
     setFlowStep("done");
     nftsRef.current?.load();
   };
@@ -166,10 +166,6 @@ export default function App() {
               />
             )}
 
-            {flowStep === "finish" && escrowResult && (
-              <EscrowFinish escrow={escrowResult} onFinished={handleFinished} />
-            )}
-
             {flowStep === "accept" && wallet.address && (
               <AcceptNft
                 buyerAddress={wallet.address}
@@ -177,6 +173,10 @@ export default function App() {
                 sign={wallet.sign}
                 onAccepted={handleNftAccepted}
               />
+            )}
+
+            {flowStep === "finish" && escrowResult && (
+              <EscrowFinish escrow={escrowResult} onFinished={handleFinished} />
             )}
 
             {flowStep === "done" && (

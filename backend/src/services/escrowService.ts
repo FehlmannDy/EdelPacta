@@ -1,4 +1,4 @@
-import { Client, Wallet } from "xrpl";
+import { Client, Wallet, decodeAccountID } from "xrpl";
 import * as keypairs from "ripple-keypairs";
 import { XrplDefinitions, encode, encodeForSigning } from "ripple-binary-codec";
 import { readFileSync } from "fs";
@@ -290,20 +290,41 @@ export async function createEscrow(params: CreateEscrowParams): Promise<CreateEs
 export interface FinishEscrowParams {
   escrowSequence: number;
   nftId: string;
-  offerSequence: number;
+  buyerAddress: string;
 }
 
 export interface FinishEscrowResult {
   hash: string;
 }
 
+async function waitForNFTInWallet(
+  client: Client,
+  address: string,
+  nftId: string,
+  timeoutMs = 30000
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  const normalizedId = nftId.toUpperCase();
+  while (Date.now() < deadline) {
+    const response = await client.request({
+      command: "account_nfts",
+      account: address,
+      ledger_index: "validated",
+    });
+    const nfts = (response.result as Record<string, unknown>)["account_nfts"] as Record<string, unknown>[];
+    if (nfts.some((n) => (n["NFTokenID"] as string).toUpperCase() === normalizedId)) return;
+    await sleep(3000);
+  }
+  throw new Error(`NFT ${nftId} not found in buyer wallet ${address} after ${timeoutMs / 1000}s — NFT transfer may not be validated yet`);
+}
+
 export async function finishEscrow(params: FinishEscrowParams): Promise<FinishEscrowResult> {
-  const { escrowSequence, nftId, offerSequence } = params;
+  const { escrowSequence, nftId, buyerAddress } = params;
   const notaire = getOracleWallet();
   const oracle = getOracleWallet();
 
   // The escrow Account is the issuer (notaire) — same wallet
-  logger.info({ escrowAccount: notaire.address, escrowSequence, nftId, offerSequence }, "escrow: finishing");
+  logger.info({ escrowAccount: notaire.address, escrowSequence, nftId, buyerAddress }, "escrow: finishing");
 
   // Both notaire and oracle sign the NFT ID
   const msgHex = nftId.toLowerCase();
@@ -316,10 +337,16 @@ export async function finishEscrow(params: FinishEscrowParams): Promise<FinishEs
   await client.connect();
 
   try {
+    // Wait until the NFT appears in the buyer's validated ledger state before
+    // submitting EscrowFinish — the WASM checks this live on-chain
+    logger.info({ buyerAddress, nftId }, "escrow: waiting for NFT to appear in buyer wallet");
+    await waitForNFTInWallet(client, buyerAddress, nftId);
+    logger.info({ buyerAddress, nftId }, "escrow: NFT confirmed in buyer wallet");
+
     const { sequence, lastLedger } = await autofillBase(client, notaire.address);
 
-    const offerSeqBuf = Buffer.alloc(4);
-    offerSeqBuf.writeUInt32BE(offerSequence);
+    // Encode buyer address as 20-byte AccountID for WASM Memo[5]
+    const buyerAccountIdHex = Buffer.from(decodeAccountID(buyerAddress)).toString("hex").toUpperCase();
 
     const tx: Record<string, unknown> = {
       TransactionType: "EscrowFinish",
@@ -338,7 +365,7 @@ export async function finishEscrow(params: FinishEscrowParams): Promise<FinishEs
         { Memo: { MemoType: toHex("NOTARY_PUBKEY"), MemoData: notairePubHex.toUpperCase() } },
         { Memo: { MemoType: toHex("ORACLE_SIG"),    MemoData: oracleSigHex.toUpperCase() } },
         { Memo: { MemoType: toHex("ORACLE_PUBKEY"), MemoData: oraclePubHex.toUpperCase() } },
-        { Memo: { MemoType: toHex("OFFER_SEQ"),     MemoData: offerSeqBuf.toString("hex").toUpperCase() } },
+        { Memo: { MemoType: toHex("BUYER_ADDR"),    MemoData: buyerAccountIdHex } },
       ],
     };
 

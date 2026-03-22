@@ -5,7 +5,7 @@ extern crate std;
 
 use xrpl_wasm_stdlib::core::current_tx::escrow_finish;
 use xrpl_wasm_stdlib::core::current_tx::traits::TransactionCommonFields;
-use xrpl_wasm_stdlib::core::keylets::{credential_keylet, nft_offer_keylet};
+use xrpl_wasm_stdlib::core::keylets::credential_keylet;
 use xrpl_wasm_stdlib::core::ledger_objects::current_escrow;
 use xrpl_wasm_stdlib::core::ledger_objects::traits::CurrentEscrowFields;
 use xrpl_wasm_stdlib::core::locator::Locator;
@@ -43,15 +43,14 @@ const KYC_ISSUER: [u8; 20] = r_address!("raW1qTXwu1qDaEzW1cKmMCn8Q7MuvEHTVK");
 //   Memo[2] : NOTARY_PUBKEY— Clé publique du Notaire (33 bytes secp256k1)
 //   Memo[3] : ORACLE_SIG   — Signature DER de l'Oracle sur NFT_ID
 //   Memo[4] : ORACLE_PUBKEY— Clé publique de l'Oracle (33 bytes secp256k1)
-//   Memo[5] : OFFER_SEQ    — Séquence de la tx NFTokenCreateOffer de Bob (4 bytes BE)
+//   Memo[5] : BUYER_ADDR   — AccountID de l'acheteur Alice (20 bytes)
 //
 // Vérifications STRICTES (return 0 = escrow bloqué si l'une échoue) :
 //   [1] Notaire  — seul rESx65V... peut soumettre EscrowFinish
 //   [2] KYC Bob  — credential KYC_OK on-chain émis par le Notaire
-//   [3] NFT Bob  — Bob possède encore le NFT au moment du finish
+//   [3] NFT Alice — Alice (acheteur) possède déjà le NFT au moment du finish
 //   [4] Signature Notaire  — check_sig secp256k1 sur NFT_ID
 //   [5] Signature Oracle   — check_sig secp256k1 sur NFT_ID
-//   [6] Offre NFT active   — Bob a bien créé l'offre de vente pour Alice
 
 #[unsafe(no_mangle)]
 pub extern "C" fn finish() -> i32 {
@@ -77,7 +76,7 @@ pub extern "C" fn finish() -> i32 {
     let (memo2, rc2) = read_memo!(2);  // NOTARY_PUBKEY
     let (memo3, rc3) = read_memo!(3);  // ORACLE_SIG
     let (memo4, rc4) = read_memo!(4);  // ORACLE_PUBKEY
-    let (memo5, rc5) = read_memo!(5);  // OFFER_SEQ (4 bytes)
+    let (memo5, rc5) = read_memo!(5);  // BUYER_ADDR (20 bytes)
 
     // ── NFT ID (Memo[0]) ──────────────────────────────────────────────────
     if rc0 < 32 {
@@ -134,10 +133,19 @@ pub extern "C" fn finish() -> i32 {
         }
     }
 
-    // ── [3] Bob possède encore le NFT ─────────────────────────────────────
-    match nft_token.uri(&bob) {
+    // ── [3] Alice (acheteur) possède déjà le NFT ─────────────────────────
+    if rc5 != 20 {
+        let _ = trace_data("ERR:MEMO5_BUYER_ADDR_ABSENT", &[], DataRepr::AsHex);
+        return 0;
+    }
+    let alice_bytes: [u8; 20] = match memo5[0..20].try_into() {
+        core::result::Result::Ok(v) => v,
+        core::result::Result::Err(_) => return 0,
+    };
+    let alice = AccountID(alice_bytes);
+    match nft_token.uri(&alice) {
         Ok(_uri) => {
-            let _ = trace_data("OK:NFT_BOB", &[], DataRepr::AsHex);
+            let _ = trace_data("OK:NFT_ALICE", &[], DataRepr::AsHex);
         }
         Err(e) => {
             let _ = trace_num("ERR:NFT_ABSENT rc=", e.code() as i64);
@@ -186,35 +194,6 @@ pub extern "C" fn finish() -> i32 {
         } else {
             let _ = trace_num("ERR:SIG_ORACLE_INVALIDE rc=", rc_check as i64);
             return 0;
-        }
-    }
-
-    // ── [6] Offre NFT de Bob active sur le ledger ─────────────────────────
-    if rc5 != 4 {
-        let _ = trace_data("ERR:MEMO5_OFFER_SEQ_ABSENT", &[], DataRepr::AsHex);
-        return 0;
-    }
-    {
-        let offer_seq = u32::from_be_bytes(match memo5[0..4].try_into() {
-            core::result::Result::Ok(v) => v,
-            core::result::Result::Err(_) => return 0,
-        });
-        let _ = trace_num("OFFER_SEQ:", offer_seq as i64);
-
-        match nft_offer_keylet(&bob, offer_seq) {
-            Ok(keylet) => {
-                let slot = unsafe { cache_ledger_obj(keylet.as_ptr(), keylet.len(), 1) };
-                if slot >= 0 {
-                    let _ = trace_data("OK:NFT_OFFER_ACTIVE", &[], DataRepr::AsHex);
-                } else {
-                    let _ = trace_data("ERR:NFT_OFFER_INACTIVE", &[], DataRepr::AsHex);
-                    return 0;
-                }
-            }
-            Err(e) => {
-                let _ = trace_num("ERR:NFT_OFFER_KEYLET_ERR", e.code() as i64);
-                return 0;
-            }
         }
     }
 
