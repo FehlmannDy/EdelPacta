@@ -1,0 +1,17 @@
+[package]
+name = "my-contract"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+xrpl-wasm-stdlib = { git = "https://github.com/ripple/xrpl-wasm-stdlib", branch = "main" }
+
+[profile.release]
+opt-level = "z"     # Optimise pour la taille (crucial pour XRPL)
+lto = true          # Link Time Optimization
+codegen-units = 1
+panic = "abort"     # Obligatoire pour no_std WASM
+strip = true        # Retire les symboles de debug
