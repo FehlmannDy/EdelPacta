@@ -374,6 +374,48 @@ button.btn-nft-action {
   border-top: 1px solid #c8bfb2;
 }
 
+/* ── Vendor KYC status in transfer row ─────────────────── */
+
+.vendor-kyc-status {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.vendor-kyc-checking {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  color: #8a7a68;
+  font-family: system-ui, sans-serif;
+}
+
+.vendor-kyc-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.72rem;
+  font-family: system-ui, sans-serif;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  font-weight: 600;
+}
+
+.vendor-kyc-badge--ok {
+  color: #2d7a3a;
+  background: #eaf6ec;
+  border-color: #a3d4a8;
+}
+
+.vendor-kyc-badge--fail {
+  color: #9b2a2a;
+  background: #fdf0f0;
+  border-color: #e8b4b4;
+}
+
 /* ── File name ──────────────────────────────────────────── */
 
 .file-name {

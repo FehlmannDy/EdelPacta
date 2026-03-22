@@ -1,6 +1,7 @@
-import { useState, useEffect, useImperativeHandle, forwardRef } from "react";
+import { useState, useEffect, useImperativeHandle, forwardRef, useRef } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { nftApi, NFToken } from "../api/nft";
+import { kycApi, CredentialStatus } from "../api/kyc";
 import { nftLog } from "../logger";
 import { Copyable } from "./Copyable";
 import { Stepper } from "./Stepper";
@@ -54,6 +55,27 @@ function TransferRow({ nft, address, sign, onDone, onTransfer }: TransferRowProp
   const [loading, setLoading] = useState(false);
   const [txStep, setTxStep] = useState(-1);
   const [destError, setDestError] = useState("");
+  const [kycStatus, setKycStatus] = useState<{ identity: CredentialStatus; tax: CredentialStatus } | null>(null);
+  const [kycChecking, setKycChecking] = useState(false);
+  const kycDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (kycDebounce.current) clearTimeout(kycDebounce.current);
+    const isValidDest = destination.length >= 25 && destination.startsWith("r");
+    if (!isValidDest) { setKycStatus(null); setKycChecking(false); return; }
+    setKycChecking(true);
+    kycDebounce.current = setTimeout(async () => {
+      try {
+        const status = await kycApi.checkVendorKYC(destination);
+        setKycStatus(status);
+      } catch {
+        setKycStatus(null);
+      } finally {
+        setKycChecking(false);
+      }
+    }, 600);
+    return () => { if (kycDebounce.current) clearTimeout(kycDebounce.current); };
+  }, [destination]);
 
   const validateDest = (val: string) => {
     if (val && (val.length < 25 || !val.startsWith("r"))) return "XRPL address must start with 'r' (25–34 chars).";
@@ -67,6 +89,22 @@ function TransferRow({ nft, address, sign, onDone, onTransfer }: TransferRowProp
     setOfferId(null);
     setTxStep(0);
     try {
+      // Verify vendor has both KYC credentials before transferring
+      if (destination) {
+        nftLog.info("checking vendor KYC", { destination });
+        const kyc = await kycApi.checkVendorKYC(destination);
+        if (kyc.identity !== "accepted" || kyc.tax !== "accepted") {
+          const missing = [
+            kyc.identity !== "accepted" && "ID",
+            kyc.tax !== "accepted" && "Estate",
+          ].filter(Boolean).join(" and ");
+          setDestError(`Recipient has not completed KYC (missing: ${missing} credential).`);
+          setTxStep(-1);
+          setLoading(false);
+          return;
+        }
+      }
+
       nftLog.info("preparing transfer offer", { nftokenId: nft.nftokenId });
       const unsignedTx = await nftApi.prepareTransferOffer({ account: address, nftokenId: nft.nftokenId, destination: destination || undefined });
       setTxStep(1);
@@ -100,8 +138,28 @@ function TransferRow({ nft, address, sign, onDone, onTransfer }: TransferRowProp
         />
         {destError && <span className="field-error">{destError}</span>}
       </label>
+      {(kycChecking || kycStatus) && (
+        <div className="vendor-kyc-status">
+          {kycChecking ? (
+            <span className="vendor-kyc-checking"><span className="spinner spinner--sm spinner--inline" /> Checking KYC…</span>
+          ) : kycStatus && (
+            <>
+              <span className={`vendor-kyc-badge ${kycStatus.identity === "accepted" ? "vendor-kyc-badge--ok" : "vendor-kyc-badge--fail"}`}>
+                {kycStatus.identity === "accepted" ? "✓" : "✗"} ID Verified
+              </span>
+              <span className={`vendor-kyc-badge ${kycStatus.tax === "accepted" ? "vendor-kyc-badge--ok" : "vendor-kyc-badge--fail"}`}>
+                {kycStatus.tax === "accepted" ? "✓" : "✗"} Estate Verified
+              </span>
+            </>
+          )}
+        </div>
+      )}
       {txStep >= 0 && <Stepper steps={TX_STEPS} current={txStep} />}
-      <button onClick={handleTransfer} disabled={loading} className="btn-nft-action">{loading ? "…" : "Send"}</button>
+      <button
+        onClick={handleTransfer}
+        disabled={loading || !destination || kycChecking || !kycStatus || kycStatus.identity !== "accepted" || kycStatus.tax !== "accepted"}
+        className="btn-nft-action"
+      >{loading ? "…" : "Send"}</button>
       {offerId && (
         <div className="result" style={{ marginTop: "0.5rem" }}>
           <p><strong>Offer ID</strong> — share with recipient<br /><Copyable text={offerId} truncate={10} /></p>

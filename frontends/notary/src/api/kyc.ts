@@ -41,4 +41,21 @@ export const kycApi = {
     if (!res.ok) throw new Error(data.error ?? "Failed to prepare accept txs");
     return data.txs ?? [];
   },
+
+  checkVendorKYC: async (address: string): Promise<{ identity: CredentialStatus; tax: CredentialStatus }> => {
+    const [idRes, taxRes] = await Promise.all([
+      fetch(`/api/kyc/status/${address}?role=vendor&step=identity`),
+      fetch(`/api/kyc/status/${address}?role=vendor&step=tax`),
+    ]);
+    const [idData, taxData] = await Promise.all([
+      idRes.json() as Promise<{ status?: CredentialStatus; error?: string }>,
+      taxRes.json() as Promise<{ status?: CredentialStatus; error?: string }>,
+    ]);
+    if (!idRes.ok) throw new Error(idData.error ?? "Failed to check identity KYC");
+    if (!taxRes.ok) throw new Error(taxData.error ?? "Failed to check estate KYC");
+    return {
+      identity: idData.status ?? "none",
+      tax: taxData.status ?? "none",
+    };
+  },
 };

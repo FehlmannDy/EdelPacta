@@ -12,8 +12,8 @@ function KYCBadge({ step }: { step: KYCStep | null }) {
   if (!step || step === "checking") return null;
   if (step === "done") {
     return (
-      <span className="kyc-badge kyc-badge--done" title="Identity verified on XRPL">
-        🛡 Verified
+      <span className="kyc-badge kyc-badge--done" title="Swiss e-ID verified on XRPL">
+        🪪 ID Verified
       </span>
     );
   }

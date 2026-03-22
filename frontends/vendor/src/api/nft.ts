@@ -76,6 +76,9 @@ export const nftApi = {
     offerId: string;
   }) => post<PreparedTx>("/prepare/accept-offer", params),
 
+  prepareBurn: (params: { account: string; nftokenId: string }) =>
+    post<PreparedTx>("/prepare/burn", params),
+
   submit: (txBlob: string) =>
     post<SubmitResult>("/submit", { txBlob }),
 
