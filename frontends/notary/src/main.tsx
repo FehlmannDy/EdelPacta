@@ -1,8 +1,8 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
-import { ToastProvider } from "./context/ToastContext";
-import { ToastContainer } from "./components/Toast";
+import { ToastProvider } from "@shared/context/ToastContext";
+import { ToastContainer } from "@shared/components/Toast";
 import "./index.css";
 
 createRoot(document.getElementById("root")!).render(

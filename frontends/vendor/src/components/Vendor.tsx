@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { nftApi } from "../api/nft";
-import { nftLog } from "../logger";
-import { Stepper } from "./Stepper";
-import { Copyable } from "./Copyable";
-import { useToast } from "../context/ToastContext";
-import { translateXrplError } from "../utils/xrplErrors";
+import { nftLog } from "@shared/logger";
+import { Stepper } from "@shared/components/Stepper";
+import { Copyable } from "@shared/components/Copyable";
+import { useToast } from "@shared/context/ToastContext";
+import { translateXrplError } from "@shared/utils/xrplErrors";
+import { TX_STEPS } from "../constants";
 
 interface Props {
   address: string;
@@ -12,7 +13,6 @@ interface Props {
   onAccepted?: () => void;
 }
 
-const TX_STEPS = ["Prepare", "Sign", "Submit"];
 
 export function Vendor({ address, sign, onAccepted }: Props) {
   const { addToast } = useToast();

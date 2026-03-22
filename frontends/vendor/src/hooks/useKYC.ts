@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { kycApi, CredentialStatus } from "../api/kyc";
-import { kycLog } from "../logger";
+import { kycLog } from "@shared/logger";
+import { readSSEStream } from "@shared/utils/readSSEStream";
 
 export type KYCStep =
   | "checking"
@@ -17,36 +18,6 @@ export interface KYCState {
   streamState: string | null;
   error: string | null;
   verificationStep: "identity" | "tax" | null;
-}
-
-async function* readSSEStream(
-  response: Response
-): AsyncGenerator<Record<string, unknown>> {
-  if (!response.body) return;
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    const chunk = decoder.decode(value);
-    const lines = chunk.split("\n");
-
-    for (const line of lines) {
-      if (line.startsWith("data:")) {
-        const jsonData = line.substring(5).trim();
-        if (jsonData) {
-          try {
-            yield JSON.parse(jsonData) as Record<string, unknown>;
-          } catch {
-            // malformed JSON — skip
-          }
-        }
-      }
-    }
-  }
 }
 
 export function useKYC(
@@ -170,7 +141,7 @@ export function useKYC(
         await acceptCredentialStep(address, "identity");
       } else if (identityStatus !== "accepted") {
         // Identity credential missing → run full verification flow
-        setState((s) => ({ ...s, step: "scanning", error: null, streamState: null, verificationStep: "identity" }));
+        setState((s) => ({ ...s, step: "scanning", error: null, streamState: null, verificationStep: "identity", verificationUrl: null }));
         kycLog.info("starting identity verification", { address });
         const { verificationId, verificationUrl } = await kycApi.start("identity");
         kycLog.info("identity session created", { verificationId });
@@ -188,11 +159,14 @@ export function useKYC(
         await acceptCredentialStep(address, "tax");
       } else if (taxStatus !== "accepted") {
         // Estate credential missing → run full verification flow
-        setState((s) => ({ ...s, step: "scanning", error: null, streamState: null, verificationStep: "tax" }));
+        setState((s) => ({ ...s, step: "scanning", error: null, streamState: null, verificationStep: "tax", verificationUrl: null }));
         kycLog.info("starting estate verification", { address });
         const { verificationId: taxId, verificationUrl: taxUrl } = await kycApi.start("tax");
         kycLog.info("estate session created", { verificationId: taxId });
+        if (!taxUrl) throw new Error("Verifier did not return a verification URL for estate credential");
         setState((s) => ({ ...s, verificationUrl: taxUrl }));
+        // Yield to event loop so React renders the QR code before SSE events arrive
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
         await runVerificationStep(taxId, address, "tax");
       } else {
         kycLog.info("estate credential already accepted, skipping", { address });

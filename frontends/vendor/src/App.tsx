@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
-import { useWallet } from "./hooks/useWallet";
-import { WalletBar } from "./components/WalletBar";
+import { useWallet } from "@shared/hooks/useWallet";
+import { WalletBar } from "@shared/components/WalletBar";
 import { KYCGate } from "./components/KYCGate";
 import { Vendor } from "./components/Vendor";
 import { OwnedNFTs, OwnedNFTsHandle } from "./components/OwnedNFTs";
@@ -12,9 +12,14 @@ function KYCBadge({ step }: { step: KYCStep | null }) {
   if (!step || step === "checking") return null;
   if (step === "done") {
     return (
-      <span className="kyc-badge kyc-badge--done" title="Identity verified on XRPL">
-        🛡 Verified
-      </span>
+      <>
+        <span className="kyc-badge kyc-badge--done" title="Swiss e-ID verified on XRPL">
+          🪪 ID Verified
+        </span>
+        <span className="kyc-badge kyc-badge--done kyc-badge--estate" title="Estate credential verified on XRPL">
+          🏠 Estate Verified
+        </span>
+      </>
     );
   }
   return (
@@ -93,7 +98,7 @@ export default function App() {
           </div>
         ) : (
           <KYCGate key={kycKey} address={wallet.address!} sign={wallet.sign} onStep={setKycStep}>
-            <OwnedNFTs ref={ownedRef} address={wallet.address!} />
+            <OwnedNFTs ref={ownedRef} address={wallet.address!} sign={wallet.sign} />
             <IncomingOffers
               ref={incomingRef}
               address={wallet.address!}

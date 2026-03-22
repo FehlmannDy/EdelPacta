@@ -10,6 +10,16 @@ import {
 
 const DEFAULT_NETWORK = process.env.XRPL_NETWORK ?? "wss://wasm.devnet.rippletest.net:51233";
 
+export async function withClient<T>(networkUrl: string, fn: (client: Client) => Promise<T>): Promise<T> {
+  const client = new Client(networkUrl);
+  await client.connect();
+  try {
+    return await fn(client);
+  } finally {
+    await client.disconnect();
+  }
+}
+
 // XLS-20 NFTokenMint flags
 export const NFTokenMintFlags = {
   tfBurnable: 0x00000001,     // Issuer can burn the NFT
@@ -52,10 +62,7 @@ export async function mintNFT(params: MintNFTParams): Promise<MintNFTResult> {
     networkUrl = DEFAULT_NETWORK,
   } = params;
 
-  const client = new Client(networkUrl);
-  await client.connect();
-
-  try {
+  return withClient(networkUrl, async (client) => {
     const wallet = Wallet.fromSeed(seed);
 
     const mintTx: NFTokenMint = {
@@ -94,9 +101,7 @@ export async function mintNFT(params: MintNFTParams): Promise<MintNFTResult> {
       txHash: signed.hash,
       account: wallet.address,
     };
-  } finally {
-    await client.disconnect();
-  }
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -123,29 +128,28 @@ export interface NFTOffer {
 }
 
 export async function getIncomingOffers(address: string, nftokenId: string, networkUrl = DEFAULT_NETWORK): Promise<NFTOffer[]> {
-  const client = new Client(networkUrl);
-  await client.connect();
-
   try {
-    const response = await client.request({
-      command: "nft_sell_offers",
-      nft_id: nftokenId,
+    return await withClient(networkUrl, async (client) => {
+      const response = await client.request({
+        command: "nft_sell_offers",
+        nft_id: nftokenId,
+      });
+
+      const offers = (response.result.offers ?? []) as Record<string, unknown>[];
+
+      // Keep offers with no destination (open) or destination = this address
+      return offers
+        .filter((o) => !o["destination"] || o["destination"] === address)
+        .map((o) => ({
+          offerId: o["nft_offer_index"] as string,
+          nftokenId,
+          owner: o["owner"] as string,
+          amount: String(o["amount"] ?? "0"),
+          destination: (o["destination"] as string) ?? null,
+          expiration: (o["expiration"] as number) ?? null,
+          isSellOffer: true,
+        }));
     });
-
-    const offers = (response.result.offers ?? []) as Record<string, unknown>[];
-
-    // Keep offers with no destination (open) or destination = this address
-    return offers
-      .filter((o) => !o["destination"] || o["destination"] === address)
-      .map((o) => ({
-        offerId: o["nft_offer_index"] as string,
-        nftokenId,
-        owner: o["owner"] as string,
-        amount: String(o["amount"] ?? "0"),
-        destination: (o["destination"] as string) ?? null,
-        expiration: (o["expiration"] as number) ?? null,
-        isSellOffer: true,
-      }));
   } catch (err: unknown) {
     // objectNotFound means no offers exist for this NFToken
     if (err && typeof err === "object" && (err as Record<string, unknown>)["data"] &&
@@ -153,8 +157,6 @@ export async function getIncomingOffers(address: string, nftokenId: string, netw
       return [];
     }
     throw err;
-  } finally {
-    await client.disconnect();
   }
 }
 
@@ -204,10 +206,7 @@ export async function getIncomingOffersForAccount(
   minterAddress: string,
   networkUrl = DEFAULT_NETWORK
 ): Promise<IncomingOffer[]> {
-  const client = new Client(networkUrl);
-  await client.connect();
-
-  try {
+  return withClient(networkUrl, async (client) => {
     // Step 1: crawl account_tx to collect ALL NFT IDs ever minted
     const mintedNftIds = new Set<string>();
     let marker: unknown = undefined;
@@ -268,16 +267,11 @@ export async function getIncomingOffersForAccount(
     }
 
     return results;
-  } finally {
-    await client.disconnect();
-  }
+  });
 }
 
 export async function getOutgoingOffers(account: string, networkUrl = DEFAULT_NETWORK): Promise<PendingOffer[]> {
-  const client = new Client(networkUrl);
-  await client.connect();
-
-  try {
+  return withClient(networkUrl, async (client) => {
     const response = await client.request({
       command: "account_objects",
       account,
@@ -296,16 +290,11 @@ export async function getOutgoingOffers(account: string, networkUrl = DEFAULT_NE
         expiration: (o["Expiration"] as number) ?? null,
         isSellOffer: !!((o["Flags"] as number) & 1),
       }));
-  } finally {
-    await client.disconnect();
-  }
+  });
 }
 
 export async function getAccountNFTs(account: string, networkUrl = DEFAULT_NETWORK): Promise<NFToken[]> {
-  const client = new Client(networkUrl);
-  await client.connect();
-
-  try {
+  return withClient(networkUrl, async (client) => {
     const response = await client.request({
       command: "account_nfts",
       account,
@@ -320,9 +309,7 @@ export async function getAccountNFTs(account: string, networkUrl = DEFAULT_NETWO
       flags: (nft["Flags"] as number) ?? 0,
       uri: nft["URI"] ? Buffer.from(nft["URI"] as string, "hex").toString("utf8") : null,
     }));
-  } finally {
-    await client.disconnect();
-  }
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -341,10 +328,7 @@ export interface PrepareMintParams {
 export async function prepareMintTx(params: PrepareMintParams): Promise<Record<string, unknown>> {
   const { account, taxon, uri, transferFee = 0, flags = NFTokenMintFlags.tfTransferable, networkUrl = DEFAULT_NETWORK } = params;
 
-  const client = new Client(networkUrl);
-  await client.connect();
-
-  try {
+  return withClient(networkUrl, async (client) => {
     const tx: NFTokenMint = {
       TransactionType: "NFTokenMint",
       Account: account,
@@ -354,9 +338,7 @@ export async function prepareMintTx(params: PrepareMintParams): Promise<Record<s
       ...(uri && { URI: convertStringToHex(uri) }),
     };
     return await client.autofill(tx) as unknown as Record<string, unknown>;
-  } finally {
-    await client.disconnect();
-  }
+  });
 }
 
 export interface PrepareBurnParams {
@@ -368,19 +350,14 @@ export interface PrepareBurnParams {
 export async function prepareBurnTx(params: PrepareBurnParams): Promise<Record<string, unknown>> {
   const { account, nftokenId, networkUrl = DEFAULT_NETWORK } = params;
 
-  const client = new Client(networkUrl);
-  await client.connect();
-
-  try {
+  return withClient(networkUrl, async (client) => {
     const tx: NFTokenBurn = {
       TransactionType: "NFTokenBurn",
       Account: account,
       NFTokenID: nftokenId,
     };
     return await client.autofill(tx) as unknown as Record<string, unknown>;
-  } finally {
-    await client.disconnect();
-  }
+  });
 }
 
 export interface PrepareTransferOfferParams {
@@ -394,10 +371,7 @@ export interface PrepareTransferOfferParams {
 export async function prepareTransferOfferTx(params: PrepareTransferOfferParams): Promise<Record<string, unknown>> {
   const { account, nftokenId, destination, amount = "0", networkUrl = DEFAULT_NETWORK } = params;
 
-  const client = new Client(networkUrl);
-  await client.connect();
-
-  try {
+  return withClient(networkUrl, async (client) => {
     const tx: NFTokenCreateOffer = {
       TransactionType: "NFTokenCreateOffer",
       Account: account,
@@ -407,9 +381,7 @@ export async function prepareTransferOfferTx(params: PrepareTransferOfferParams)
       ...(destination && { Destination: destination }),
     };
     return await client.autofill(tx) as unknown as Record<string, unknown>;
-  } finally {
-    await client.disconnect();
-  }
+  });
 }
 
 export interface PrepareAcceptOfferParams {
@@ -421,19 +393,14 @@ export interface PrepareAcceptOfferParams {
 export async function prepareAcceptOfferTx(params: PrepareAcceptOfferParams): Promise<Record<string, unknown>> {
   const { account, offerId, networkUrl = DEFAULT_NETWORK } = params;
 
-  const client = new Client(networkUrl);
-  await client.connect();
-
-  try {
+  return withClient(networkUrl, async (client) => {
     const tx: NFTokenAcceptOffer = {
       TransactionType: "NFTokenAcceptOffer",
       Account: account,
       NFTokenSellOffer: offerId,
     };
     return await client.autofill(tx) as unknown as Record<string, unknown>;
-  } finally {
-    await client.disconnect();
-  }
+  });
 }
 
 export interface SubmitSignedTxParams {
@@ -451,10 +418,7 @@ export interface SubmitSignedTxResult {
 export async function submitSignedTx(params: SubmitSignedTxParams): Promise<SubmitSignedTxResult> {
   const { txBlob, networkUrl = DEFAULT_NETWORK } = params;
 
-  const client = new Client(networkUrl);
-  await client.connect();
-
-  try {
+  return withClient(networkUrl, async (client) => {
     const response = await client.submitAndWait(txBlob);
     const meta = response.result.meta as Record<string, unknown> | undefined;
 
@@ -473,9 +437,7 @@ export async function submitSignedTx(params: SubmitSignedTxParams): Promise<Subm
       nftokenId: (meta["nftoken_id"] as string | undefined) ?? extractNFTokenId(meta) ?? undefined,
       offerId: extractOfferId(meta) ?? undefined,
     };
-  } finally {
-    await client.disconnect();
-  }
+  });
 }
 
 export interface CreateTransferOfferParams {
@@ -512,10 +474,7 @@ export async function createTransferOffer(
     networkUrl = DEFAULT_NETWORK,
   } = params;
 
-  const client = new Client(networkUrl);
-  await client.connect();
-
-  try {
+  return withClient(networkUrl, async (client) => {
     const wallet = Wallet.fromSeed(seed);
 
     const offerTx: NFTokenCreateOffer = {
@@ -546,9 +505,7 @@ export async function createTransferOffer(
     }
 
     return { offerId, txHash: signed.hash };
-  } finally {
-    await client.disconnect();
-  }
+  });
 }
 
 export interface AcceptTransferOfferParams {
@@ -573,10 +530,7 @@ export async function acceptTransferOffer(
     networkUrl = DEFAULT_NETWORK,
   } = params;
 
-  const client = new Client(networkUrl);
-  await client.connect();
-
-  try {
+  return withClient(networkUrl, async (client) => {
     const wallet = Wallet.fromSeed(seed);
 
     const acceptTx: NFTokenAcceptOffer = {
@@ -599,9 +553,7 @@ export async function acceptTransferOffer(
     }
 
     return { txHash: signed.hash, account: wallet.address };
-  } finally {
-    await client.disconnect();
-  }
+  });
 }
 
 function extractOfferId(meta: unknown): string | null {

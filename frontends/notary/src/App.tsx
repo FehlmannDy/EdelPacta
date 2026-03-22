@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
-import { useWallet } from "./hooks/useWallet";
-import { WalletBar } from "./components/WalletBar";
+import { useWallet } from "@shared/hooks/useWallet";
+import { WalletBar } from "@shared/components/WalletBar";
 import { KYCGate } from "./components/KYCGate";
 import { NFTList, NFTListHandle } from "./components/NFTList";
 import { MintForm } from "./components/MintForm";
@@ -12,8 +12,8 @@ function KYCBadge({ step }: { step: KYCStep | null }) {
   if (!step || step === "checking") return null;
   if (step === "done") {
     return (
-      <span className="kyc-badge kyc-badge--done" title="Identity verified on XRPL">
-        🛡 Verified
+      <span className="kyc-badge kyc-badge--done" title="Swiss e-ID verified on XRPL">
+        🪪 ID Verified
       </span>
     );
   }

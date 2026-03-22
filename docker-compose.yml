@@ -34,8 +34,8 @@ services:
 
   notary:
     build:
-      context: ./frontends/notary
-      dockerfile: Dockerfile
+      context: ./frontends
+      dockerfile: notary/Dockerfile
       args:
         - VITE_IPFS_GATEWAY=${VITE_IPFS_GATEWAY}
     depends_on:
@@ -45,8 +45,8 @@ services:
 
   vendor:
     build:
-      context: ./frontends/vendor
-      dockerfile: Dockerfile
+      context: ./frontends
+      dockerfile: vendor/Dockerfile
       args:
         - VITE_IPFS_GATEWAY=${VITE_IPFS_GATEWAY}
     depends_on:

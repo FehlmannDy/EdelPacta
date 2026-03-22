@@ -1,9 +1,12 @@
 import { useState, useEffect, forwardRef, useImperativeHandle } from "react";
 import { nftApi, IncomingOffer } from "../api/nft";
-import { Stepper } from "./Stepper";
-import { Copyable } from "./Copyable";
-import { useToast } from "../context/ToastContext";
-import { translateXrplError } from "../utils/xrplErrors";
+import { Stepper } from "@shared/components/Stepper";
+import { Copyable } from "@shared/components/Copyable";
+import { SkeletonCard } from "@shared/components/SkeletonCard";
+import { useToast } from "@shared/context/ToastContext";
+import { translateXrplError } from "@shared/utils/xrplErrors";
+import { formatXrplExpiry, dropsToXrp } from "@shared/utils/xrplEpoch";
+import { TX_STEPS } from "../constants";
 
 interface Props {
   address: string;
@@ -12,33 +15,6 @@ interface Props {
 }
 
 export interface IncomingOffersHandle { load: () => void; }
-
-const TX_STEPS = ["Prepare", "Sign", "Submit"];
-
-function SkeletonCard() {
-  return (
-    <div className="skeleton-card">
-      <div className="skeleton skeleton-line skeleton-line--medium" />
-      <div className="skeleton skeleton-line skeleton-line--long" />
-      <div className="skeleton skeleton-line skeleton-line--short" />
-    </div>
-  );
-}
-
-function dropsToXrp(drops: string): string {
-  const n = Number(drops);
-  if (isNaN(n)) return drops;
-  return n === 0 ? "Free" : `${(n / 1_000_000).toLocaleString()} XRP`;
-}
-
-function formatExpiry(expiration: number | null): string | null {
-  if (!expiration) return null;
-  // XRPL epoch starts 2000-01-01, Unix epoch starts 1970-01-01 (diff = 946684800s)
-  const unixTs = (expiration + 946684800) * 1000;
-  const d = new Date(unixTs);
-  if (d < new Date()) return "Expired";
-  return `Expires ${d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}`;
-}
 
 interface AcceptButtonProps {
   offer: IncomingOffer;
@@ -144,7 +120,7 @@ export const IncomingOffers = forwardRef<IncomingOffersHandle, Props>(function I
       )}
 
       {!loading && offers.map((offer) => {
-        const expiry = formatExpiry(offer.expiration);
+        const expiry = formatXrplExpiry(offer.expiration);
         const isExpired = expiry === "Expired";
         return (
           <div key={offer.offerId} className="result">
