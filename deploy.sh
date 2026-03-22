@@ -74,13 +74,22 @@ for d in "${DOMAINS[@]}"; do
     CERTBOT_DOMAINS+=("-d" "$d")
 done
 
+# Create webroot for ACME challenges (nginx serves this directly, no proxy needed)
+mkdir -p /var/www/certbot
+
 CERT_PATH="/etc/letsencrypt/live/${DOMAINS[0]}/fullchain.pem"
 if [[ -f "$CERT_PATH" ]]; then
     info "SSL certificates already exist — skipping certbot."
 else
-    info "Obtaining SSL certificates via certbot..."
+    info "Starting nginx for ACME challenge..."
     systemctl start nginx || true
-    certbot --nginx "${CERTBOT_DOMAINS[@]}" --non-interactive --agree-tos --redirect \
+    nginx -t || error "nginx config test failed."
+
+    info "Obtaining SSL certificates via certbot (webroot)..."
+    certbot --authenticator webroot --installer nginx \
+        --webroot-path /var/www/certbot \
+        "${CERTBOT_DOMAINS[@]}" \
+        --non-interactive --agree-tos --redirect \
         -m "admin@edel-id.ch" \
         || error "certbot failed. Check the output above."
 fi
