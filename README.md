@@ -1,38 +1,91 @@
 # EdelPacta
 
-Property title deed platform on the XRP Ledger. Notaries mint and transfer NFT title deeds; vendors complete KYC (Swiss e-ID + estate attestation) and accept transfers on-chain.
+> **Pacta sunt servanda. By code.**
+
+Buying real estate in Switzerland requires locking millions of CHF in a notary's bank account for up to 8 weeks, paying 1–2% in fees, and relying on paper-based identity checks. There is no cryptographic proof that the seller legally owns the asset or has passed compliance.
+
+EdelPacta replaces the notary's bank account with an **XRPL Smart Escrow powered by WASM Hooks**. Property titles are minted as NFTs, identity is verified via the Swiss Government's digital ID (Swiyu), and settlement is atomic — funds and title swap in a single transaction enforced at protocol level.
+
+| | Traditional | EdelPacta |
+|---|---|---|
+| Settlement | 8 weeks | 3 seconds |
+| Fees | ~CHF 20,000 | < CHF 0.01 |
+| KYC | Paper documents | Swiyu e-ID / SD-JWT |
+| Counterparty risk | Central point of failure | Zero — WASM enforced |
+
+---
+
+## How it works
+
+```
+Seller (Vendor)                 Notary                    Buyer
+      |                            |                         |
+      | 1. KYC via Swiyu e-ID      |                         |
+      |   SWIYU_KYC on-chain ──────┤                         |
+      |   SWIYU_KYC_TAX on-chain   |                         |
+      |                            | 2. Mint property NFT    |
+      |                            |   XLS-20 on XRPL ───────┤
+      |                            |                         | 3. KYC via Swiyu e-ID
+      |                            |                         |   SWIYU_KYC on-chain
+      | 4. Create NFT sell offer   |                         |
+      |   Destination = Buyer ─────┼─────────────────────────┤
+      |                            |                         | 5. Lock XRP in escrow
+      |                            |                         |   WASM FinishFunction
+      |                            | 6. Sign EscrowFinish    |
+      |                            |   WASM verifies 6 conds |
+      |                            |   → Returns 1           |
+      | ← XRP released             |                         | ← NFT title received
+```
+
+**The 6 conditions enforced inside the WASM Hook (Rust):**
+
+1. EscrowFinish submitted by the notary address
+2. Seller holds an accepted `SWIYU_KYC` credential on-chain
+3. Seller still owns the property NFT at finalization time
+4. Notary ECDSA signature on the NFT ID is valid
+5. Oracle ECDSA signature on the NFT ID is valid (independent co-signer)
+6. Seller's NFT sell offer is still active on-chain
+
+If any condition fails, the Hook returns `0` and the escrow stays locked. The buyer can cancel after a 2-hour timeout.
+
+---
 
 ## Architecture
 
 ```
 EdelPacta/
-├── backend/          # Express + Bun API server (XRPL, IPFS, KYC verifier)
+├── backend/              # Express + Bun API (XRPL, IPFS, KYC verifier, escrow)
+├── contract/             # WASM Hook in Rust (xrpl-wasm-stdlib)
+│   └── src/lib.rs        # finish() — 6-condition escrow validation
 ├── frontends/
-│   ├── notary/       # Notary UI (Vite + React) — port 3000
-│   └── vendor/       # Vendor UI (Vite + React) — port 3001
+│   ├── notary/           # Notary UI — port 3000
+│   ├── vendor/           # Vendor/Seller UI — port 3001
+│   ├── buyer/            # Buyer UI — port 3002
+│   └── shared/           # Shared components and context
 └── docker-compose.yml
 ```
+
+**Stack:** XRP Ledger · WASM Hooks (Rust) · XLS-20 NFTs · XLS-34 Credentials · Swiyu e-ID (OID4VP / SD-JWT) · IPFS (Kubo) · React + xrpl.js · Bun/Express
 
 ---
 
 ## Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/) and Docker Compose
-- Or, for local dev: [Bun](https://bun.sh/) ≥ 1.0 and Node.js ≥ 18
+- Or for local dev: [Bun](https://bun.sh/) ≥ 1.0 and Node.js ≥ 18
+- [Otsu wallet](https://chromewebstore.google.com/detail/otsu/aifpdkijgdmhbgdomhgfklhifcjaolne) browser extension (Chrome / [Firefox](https://addons.mozilla.org/firefox/addon/otsu-wallet/))
 
 ---
 
 ## Environment setup
 
-If you don't have an issuer wallet yet, run the init script — it generates a fresh XRPL wallet and funds it automatically via the devnet faucet:
+Generate a fresh funded devnet wallet:
 
 ```bash
 bun scripts/init-wallet.ts
 ```
 
-This writes `ISSUER_SEED` and `ISSUER_ADDRESS` into `.env` (creating the file if needed). You then only have to fill in the DID values manually (see table below).
-
-If you already have a wallet, copy `.env.example` instead:
+Or copy the example and fill in manually:
 
 ```bash
 cp .env.example .env
@@ -40,116 +93,119 @@ cp .env.example .env
 
 | Variable | Required | Description |
 |---|---|---|
-| `ISSUER_SEED` | yes | XRPL wallet seed (`sEd…`) used by the backend to sign credentials |
+| `ISSUER_SEED` | yes | XRPL wallet seed (`sEd…`) used by the backend |
 | `ISSUER_ADDRESS` | yes | XRPL address matching the issuer seed (`r…`) |
-| `ISSUER_DID` | yes | DID of the EdelPacta estate-credential issuer (swiyu trust infrastructure) |
-| `BETAID_ISSUER_DID` | yes | DID of the betaid issuer for Swiss e-ID verification (swiyu trust infrastructure) |
-| `XRPL_NETWORK` | no | XRPL WebSocket node URL (default: `wss://wasm.devnet.rippletest.net:51233`) |
-| `VERIFIER_BASE_URL` | no | swiyu OID4VP verifier base URL (default: `https://beta-verifier.edel-id.ch`) |
-| `VITE_IPFS_GATEWAY` | no | Public IPFS gateway URL used by the frontends (default: `http://localhost:8080/ipfs`) |
+| `ORACLE_SEED` | yes | Oracle wallet seed for dual-signing (can equal `ISSUER_SEED` on devnet) |
+| `ISSUER_DID` | yes | DID of the EdelPacta estate-credential issuer |
+| `BETAID_ISSUER_DID` | yes | DID of the Swiyu betaid issuer for Swiss e-ID |
+| `XRPL_NETWORK` | no | XRPL WebSocket URL (default: `wss://wasm.devnet.rippletest.net:51233`) |
+| `VERIFIER_BASE_URL` | no | Swiyu OID4VP verifier URL (default: `https://beta-verifier.edel-id.ch`) |
+| `VITE_IPFS_GATEWAY` | no | IPFS gateway for frontends (default: `http://localhost:8080/ipfs`) |
 
-> **Important:** never commit `.env` — it contains the wallet seed. `.gitignore` already excludes it.
+> Never commit `.env` — it contains wallet seeds. `.gitignore` already excludes it.
 
 ---
 
 ## Running with Docker (recommended)
 
 ```bash
-# Build and start all services (logs printed to terminal, stop with CTRL+C)
 docker compose up --build
-
-# Or run in the background
-docker compose up --build -d
-
-# Stop background services
-docker compose down
 ```
 
 | Service | URL |
 |---|---|
 | Notary UI | http://localhost:3000 |
 | Vendor UI | http://localhost:3001 |
-| Backend API | internal (not exposed directly) |
-| IPFS (Kubo) gateway | http://localhost:8080 |
+| Buyer UI | http://localhost:3002 |
+| IPFS gateway | http://localhost:8080 |
 
 ---
 
 ## Running locally (dev mode)
 
-### Backend
-
 ```bash
-cd backend
-bun install
-bun run dev        # starts with --watch on port 8080
-```
+# Backend
+cd backend && bun install && bun run dev       # port 8080
 
-### Notary frontend
+# Notary
+cd frontends/notary && npm install && npm run dev   # port 3000
 
-```bash
-cd frontends/notary
-npm install
-npm run dev        # http://localhost:3000
-```
+# Vendor
+cd frontends/vendor && npm install && npm run dev   # port 3001
 
-### Vendor frontend
+# Buyer
+cd frontends/buyer && npm install && npm run dev    # port 3002
 
-```bash
-cd frontends/vendor
-npm install
-npm run dev        # http://localhost:3001
-```
-
-### IPFS node (required for NFT metadata)
-
-```bash
+# IPFS
 docker run -p 4001:4001 -p 5001:5001 -p 8080:8080 ipfs/kubo:latest
 ```
 
 ---
 
-## Wallet requirement
+## User flows
 
-Both the notary and vendor UIs require the **Otsu wallet** browser extension to connect and sign XRPL transactions.
+### Notary
 
-- [Install for Chrome](https://chromewebstore.google.com/detail/otsu/aifpdkijgdmhbgdomhgfklhifcjaolne)
-- [Install for Firefox](https://addons.mozilla.org/firefox/addon/otsu-wallet/)
+1. Connect Otsu wallet
+2. Complete Swiss e-ID KYC via Swiyu — backend issues `SWIYU_KYC` credential on-chain
+3. Upload property metadata to IPFS
+4. Mint property title as an XLS-20 NFT — returns the `NFTokenID`
+5. Provide the NFT ID to the vendor (off-band)
+6. When the buyer is ready, sign the `EscrowFinish` transaction — the WASM Hook validates all 6 conditions and releases funds atomically
 
-Once installed, create or import an XRPL account and fund it on devnet before using the app.
+### Vendor (Seller)
+
+1. Connect Otsu wallet
+2. Complete two KYC steps:
+   - **Swiss e-ID** — Swiyu app scan → `SWIYU_KYC` credential on-chain
+   - **Estate attestation** — fiscal/tax scan → `SWIYU_KYC_TAX` credential on-chain
+3. Accept the incoming NFT transfer from the notary
+4. Create a sell offer for the buyer — enter the buyer's address, sign `NFTokenCreateOffer`
+5. Share the **Offer ID** and **Offer Sequence** with the buyer
+6. Receive XRP automatically when the escrow is finalized
+
+### Buyer
+
+1. Connect Otsu wallet
+2. Complete Swiss e-ID KYC via Swiyu — backend issues `SWIYU_KYC` credential on-chain
+3. Create the smart escrow:
+   - Enter the vendor address, NFT ID, and XRP amount
+   - Sign the `Payment` transaction (funds transferred to escrow account)
+   - Backend creates `EscrowCreate` with the WASM binary embedded as `FinishFunction`
+4. Enter the vendor's Offer ID (or paste the Offer Sequence manually as fallback)
+5. Finalize settlement — backend submits `EscrowFinish` with 6 condition memos; WASM validates everything
+6. Sign `NFTokenAcceptOffer` — the property title NFT transfers to the buyer's address
+7. View owned property titles in the portfolio tab
+
+> If the session is interrupted, the buyer can resume any pending escrow by reconnecting the wallet — active escrows are retrieved from on-chain transaction history via buyer address matching.
 
 ---
 
-## KYC flow (notary)
+## KYC in detail
 
-Notaries must complete a single identity verification step before they can mint or transfer title deeds.
+All identity verification uses **OID4VP** presentation requests to the Swiyu verifier. The backend polls for the result via SSE every 2 seconds (5-minute timeout). On success, it issues an XRPL credential (`CredentialCreate`); the Otsu wallet auto-signs the `CredentialAccept`. Credentials are checked on-chain by the WASM Hook at escrow finalization — no off-chain trust required.
 
-1. **Connect** the Otsu wallet — the app checks on-chain whether a `SWIYU_KYC` credential already exists for the address.
-2. **Scan the QR code** displayed in the app using the Otsu wallet's built-in scanner. This triggers an OID4VP presentation request to the swiyu verifier for the notary's Swiss e-ID (`betaid-sdjwt` credential, including `personal_administrative_number`).
-3. **Wait for verification** — the backend polls the swiyu verifier every 2 seconds via SSE until it returns `SUCCESS`.
-4. **Credential issued** — the backend signs and submits a `CredentialCreate` transaction on XRPL, issuing the `SWIYU_KYC` credential to the notary's address.
-5. **Credential accepted** — the Otsu wallet automatically signs and submits a `CredentialAccept` transaction; the notary UI unlocks.
-
-If the credential is already present on-chain (e.g. after a page reload), steps 2–5 are skipped automatically.
+| Role | Credentials required |
+|---|---|
+| Notary | `SWIYU_KYC` (Swiss e-ID) |
+| Vendor | `SWIYU_KYC` (Swiss e-ID) + `SWIYU_KYC_TAX` (estate attestation) |
+| Buyer | `SWIYU_KYC` (Swiss e-ID) |
 
 ---
 
-## KYC flow (vendor)
+## WASM Hook
 
-Vendors must complete two sequential verification steps before they can accept a property transfer.
+The smart contract lives in `contract/src/lib.rs`, compiled to `my_contract_devnet.wasm`. It is embedded directly in the `EscrowCreate` transaction as the `FinishFunction` field — a custom field added via a patched `ripple-binary-codec`.
 
-### Step 1 — Swiss e-ID (`SWIYU_KYC`)
+The `finish()` entry point reads condition data from 6 memos passed in the `EscrowFinish` transaction:
 
-1. **Connect** the Otsu wallet — the app checks whether a `SWIYU_KYC` credential exists for the address.
-2. **Scan the QR code** using the Otsu wallet. This triggers an OID4VP request for the vendor's Swiss e-ID (`betaid-sdjwt`, including `personal_administrative_number`).
-3. **Wait for verification** — backend polls the swiyu verifier via SSE until `SUCCESS`.
-4. **Credential issued** — backend submits a `CredentialCreate` for `SWIYU_KYC` on XRPL.
-5. **Credential accepted** — Otsu wallet signs the `CredentialAccept` transaction.
+| Memo | Content |
+|---|---|
+| 0 | `NFT_ID` — 32-byte property NFT identifier |
+| 1 | `NOTARY_SIG` — DER-encoded secp256k1 signature |
+| 2 | `NOTARY_PUBKEY` — 33-byte compressed public key |
+| 3 | `ORACLE_SIG` — DER-encoded secp256k1 signature |
+| 4 | `ORACLE_PUBKEY` — 33-byte compressed public key |
+| 5 | `OFFER_SEQ` — 4-byte big-endian sell offer sequence |
 
-### Step 2 — Estate attestation (`SWIYU_KYC_TAX`)
-
-6. **Scan a second QR code** — this time the OID4VP request targets the vendor's estate fiscal credential (`estate` VC, including tax ID, income, residency status, etc.) issued by the EdelPacta issuer DID.
-7. **Wait for verification** — same SSE polling flow.
-8. **Credential issued** — backend submits a `CredentialCreate` for `SWIYU_KYC_TAX` on XRPL.
-9. **Credential accepted** — Otsu wallet signs the `CredentialAccept`; the vendor UI unlocks.
-
-Both credentials must be accepted on-chain before the transfer UI becomes available. Each step is skipped automatically if the credential already exists on-chain.
+Returns `1` to release funds, `0` to keep the escrow locked.

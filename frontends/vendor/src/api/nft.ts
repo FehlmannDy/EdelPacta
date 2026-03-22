@@ -11,6 +11,7 @@ export interface SubmitResult {
   result: string;
   nftokenId?: string;
   offerId?: string;
+  sequence?: number;
 }
 
 export interface NFToken {
