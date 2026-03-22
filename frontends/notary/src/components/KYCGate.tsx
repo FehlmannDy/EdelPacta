@@ -1,7 +1,7 @@
 import { QRCodeSVG } from "qrcode.react";
 import { useKYC, KYCStep } from "../hooks/useKYC";
 import { nftApi } from "../api/nft";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 interface Props {
   address: string;
@@ -35,8 +35,13 @@ const ORDERED_STEPS: KYCStep[] = ["checking", "start", "scanning", "issuing", "a
 export function KYCGate({ address, sign, children, onStep }: Props) {
   const submit = (txBlob: string) => nftApi.submit(txBlob);
   const kyc = useKYC(address, sign, submit);
+  const [starting, setStarting] = useState(false);
 
   useEffect(() => { onStep?.(kyc.step); }, [kyc.step]);
+
+  useEffect(() => {
+    if (kyc.step !== "start") setStarting(false);
+  }, [kyc.step]);
 
   if (kyc.step === "done") return <>{children}</>;
   if (kyc.step === "checking") return <div className="spinner" style={{ marginTop: "3rem" }} />;
@@ -71,7 +76,14 @@ export function KYCGate({ address, sign, children, onStep }: Props) {
         </p>
 
         {kyc.step === "start" && (
-          <button onClick={kyc.startKYC}>Start KYC Verification</button>
+          <button
+            onClick={() => { setStarting(true); kyc.startKYC(); }}
+            disabled={starting}
+          >
+            {starting ? (
+              <><span className="spinner spinner--sm spinner--inline" /> Starting…</>
+            ) : "Start KYC Verification"}
+          </button>
         )}
 
         {kyc.step === "scanning" && !kyc.verificationUrl && <div className="spinner" />}

@@ -16,6 +16,7 @@ export interface KYCState {
   verificationUrl: string | null;
   streamState: string | null;
   error: string | null;
+  verificationStep: "identity" | "tax" | null;
 }
 
 async function* readSSEStream(
@@ -58,13 +59,14 @@ export function useKYC(
     verificationUrl: null,
     streamState: null,
     error: null,
+    verificationStep: null,
   });
 
   const setStep = (step: KYCStep, extra: Partial<KYCState> = {}) =>
     setState((s) => ({ ...s, step, error: null, streamState: null, ...extra }));
 
   const acceptCredentialStep = useCallback(async (addr: string, step: "identity" | "tax") => {
-    setStep("accepting");
+    setState((s) => ({ ...s, step: "accepting", error: null, streamState: null, verificationStep: step }));
     kycLog.info("accepting credential", { addr, step });
     const txs = await kycApi.prepareAccept(addr, step);
     for (const tx of txs) {
@@ -98,7 +100,7 @@ export function useKYC(
         setState((s) => ({ ...s, streamState: label }));
       } else if (eventState === "SUCCESS") {
         kycLog.info("verification SUCCESS", { step });
-        setStep("issuing");
+        setState((s) => ({ ...s, step: "issuing", error: null, streamState: null, verificationStep: step }));
         await kycApi.issue(addr, step);
         await acceptCredentialStep(addr, step);
         return;
@@ -111,7 +113,7 @@ export function useKYC(
   // On load: check both credentials and auto-accept any pending ones
   useEffect(() => {
     if (!address) {
-      setState({ step: "checking", verificationUrl: null, streamState: null, error: null });
+      setState({ step: "checking", verificationUrl: null, streamState: null, error: null, verificationStep: null });
       return;
     }
 
@@ -168,7 +170,7 @@ export function useKYC(
         await acceptCredentialStep(address, "identity");
       } else if (identityStatus !== "accepted") {
         // Identity credential missing → run full verification flow
-        setStep("scanning");
+        setState((s) => ({ ...s, step: "scanning", error: null, streamState: null, verificationStep: "identity" }));
         kycLog.info("starting identity verification", { address });
         const { verificationId, verificationUrl } = await kycApi.start("identity");
         kycLog.info("identity session created", { verificationId });
@@ -186,7 +188,7 @@ export function useKYC(
         await acceptCredentialStep(address, "tax");
       } else if (taxStatus !== "accepted") {
         // Estate credential missing → run full verification flow
-        setStep("scanning");
+        setState((s) => ({ ...s, step: "scanning", error: null, streamState: null, verificationStep: "tax" }));
         kycLog.info("starting estate verification", { address });
         const { verificationId: taxId, verificationUrl: taxUrl } = await kycApi.start("tax");
         kycLog.info("estate session created", { verificationId: taxId });

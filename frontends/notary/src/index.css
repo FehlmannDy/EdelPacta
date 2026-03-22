@@ -277,6 +277,16 @@ button.btn-nft-action {
   animation: spin 0.8s linear infinite;
   margin: 1rem auto;
 }
+.spinner--sm {
+  width: 0.9rem; height: 0.9rem;
+  border: 1.5px solid #c8bfb2; border-top-color: #6b1728;
+  border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0;
+}
+.spinner--inline {
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 0.4rem;
+}
 
 /* ── KYC ────────────────────────────────────────────────── */
 

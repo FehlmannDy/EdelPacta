@@ -14,10 +14,20 @@ function getIssuerDid(): string {
   return did;
 }
 
-// Mirrors Java Field class with serializeNulls() — explicit nulls required by swiyu verifier
-function field(path: string, filter: unknown = null) {
-  return { id: null, name: null, purpose: null, path: [path], filter };
+function field(path: string, filter?: unknown, optional = false) {
+  return {
+    path: [path],
+    ...(filter !== undefined && { filter }),
+    ...(optional && { optional: true }),
+  };
 }
+
+const VC_SD_JWT_FORMAT = {
+  "vc+sd-jwt": {
+    "sd-jwt_alg_values": ["ES256"],
+    "kb-jwt_alg_values": ["ES256"],
+  },
+};
 
 // Vendor / Notary: Swiss electronic ID (betaid-sdjwt)
 function buildEidPresentationDefinition() {
@@ -28,19 +38,12 @@ function buildEidPresentationDefinition() {
       input_descriptors: [
         {
           id: crypto.randomUUID(),
-          format: {
-            "vc+sd-jwt": {
-              "sd-jwt_alg_values": ["ES256"],
-              "kb-jwt_alg_values": ["ES256"],
-            },
-          },
+          format: VC_SD_JWT_FORMAT,
           constraints: {
             fields: [
               field("$.vct", { type: "string", const: "betaid-sdjwt" }),
               field("$.personal_administrative_number"),
             ],
-            limit_disclosure: null,
-            format: {},
           },
         },
       ],
@@ -78,30 +81,21 @@ function buildEstatePresentationDefinition() {
       input_descriptors: [
         {
           id: crypto.randomUUID(),
-          format: {
-            "vc+sd-jwt": {
-              "sd-jwt_alg_values": ["ES256"],
-              "kb-jwt_alg_values": ["ES256"],
-            },
-          },
+          format: VC_SD_JWT_FORMAT,
           constraints: {
             fields: [
               field("$.vct", { type: "string", const: "estate" }),
-              field("$.taxId"),
-              field("$.taxAddress"),
-              field("$.addressCountry"),
-              field("$.residencyStatus"),
-              field("$.fiscalYear"),
-              field("$.totalIncome"),
-              field("$.taxAmount"),
-              field("$.incomeThreshold"),
-              field("$.issuanceDate"),
-              field("$.expirationDate"),
-              field("$.credentialStatus"),
-              field("$.currency"),
+              field("$.taxId", undefined, true),
+              field("$.taxAddress", undefined, true),
+              field("$.addressCountry", undefined, true),
+              field("$.residencyStatus", undefined, true),
+              field("$.fiscalYear", undefined, true),
+              field("$.totalIncome", undefined, true),
+              field("$.taxAmount", undefined, true),
+              field("$.incomeThreshold", undefined, true),
+              field("$.credentialStatus", undefined, true),
+              field("$.currency", undefined, true),
             ],
-            limit_disclosure: null,
-            format: {},
           },
         },
       ],
