@@ -1,4 +1,4 @@
-const BASE = `${import.meta.env.VITE_API_BASE_URL ?? ""}/api/kyc`;
+const BASE = "/api/kyc";
 
 export type CredentialStatus = "accepted" | "pending_acceptance" | "none";
 

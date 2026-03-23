@@ -1,8 +1,6 @@
 import { makeApiClient } from "@shared/utils/apiClient";
 
-const { post, get } = makeApiClient(
-  `${import.meta.env.VITE_API_BASE_URL ?? ""}/api/escrow`,
-);
+const { post, get } = makeApiClient("/api/escrow");
 
 export interface CreateEscrowResult {
   escrowSequence: number;

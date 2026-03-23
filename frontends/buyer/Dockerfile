@@ -9,8 +9,6 @@ COPY --from=deps /frontends/buyer/node_modules ./node_modules
 RUN ln -s /frontends/buyer/node_modules /frontends/node_modules
 COPY buyer/ .
 COPY shared/ /frontends/shared/
-ARG VITE_API_BASE_URL=http://localhost:8080
-ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 RUN bun run build
 
 FROM nginx:alpine

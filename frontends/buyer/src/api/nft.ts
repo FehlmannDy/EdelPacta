@@ -1,6 +1,6 @@
 import { makeApiClient } from "@shared/utils/apiClient";
 
-const { post, get } = makeApiClient(`${import.meta.env.VITE_API_BASE_URL ?? ""}/api/nft`);
+const { post, get } = makeApiClient("/api/nft");
 
 export interface SubmitResult {
   txHash: string;
