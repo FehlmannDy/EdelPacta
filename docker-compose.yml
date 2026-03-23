@@ -51,8 +51,6 @@ services:
     build:
       context: ./frontends
       dockerfile: buyer/Dockerfile
-      args:
-        - VITE_API_BASE_URL=
     depends_on:
       - backend
     ports:
