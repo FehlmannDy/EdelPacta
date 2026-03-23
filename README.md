@@ -144,35 +144,39 @@ cd frontends/buyer && npm install && npm run dev    # port 3002
 ### Notary
 
 1. Connect Otsu wallet
-2. Complete Swiss e-ID KYC via Swiyu — backend issues `SWIYU_KYC` credential on-chain
-3. Mint property title as an XLS-20 NFT with the desired URI — returns the `NFTokenID`
-4. Provide the NFT ID to the vendor (off-band)
-5. When the buyer has accepted the NFT sell offer and holds the title, sign the `EscrowFinish` transaction — the WASM Hook verifies all 5 conditions (including buyer NFT ownership) and releases funds atomically
+2. Complete Swiss e-ID KYC via Swiyu — scan QR with SWIYU/eID app, backend issues `SWIYU_KYC` credential on-chain, Otsu auto-signs `CredentialAccept`
+3. **Issue & Transfer Title Deed** — enter the vendor's XRPL address, taxon, and fee settings, then click "Issue & Transfer Deed":
+   - Backend mints the NFT server-side using `ISSUER_SEED` (no Otsu signing required)
+   - Backend immediately creates a transfer offer directed at the vendor's address
+   - The NFT ID and Offer ID are displayed; the offer appears in the Pending Transfer Offers panel
+4. **Pending Transfer Offers** panel shows all outstanding offers (auto-polled every 15s); a QR code of the Offer ID is available for sharing; offers can be cancelled (which also burns the deed)
+5. EscrowFinish is executed automatically server-side when the buyer finalizes — the notary does not sign anything from the UI for this step
 
 ### Vendor (Seller)
 
 1. Connect Otsu wallet
-2. Complete two KYC steps:
-   - **Swiss e-ID** — Swiyu app scan → `SWIYU_KYC` credential on-chain
-   - **Estate attestation** — fiscal/tax scan → `SWIYU_KYC_TAX` credential on-chain
-3. Accept the incoming NFT transfer from the notary
-4. Create a sell offer for the buyer — enter the buyer's address, sign `NFTokenCreateOffer`
-5. Share the **Offer ID** and **Offer Sequence** with the buyer
-6. Receive XRP automatically when the escrow is finalized
+2. Complete two KYC steps (sequential, guided by QR code scans):
+   - **Swiss e-ID** — scan QR with SWIYU/eID app → `SWIYU_KYC` credential issued on-chain, Otsu auto-signs `CredentialAccept`
+   - **Estate credential** — scan second QR for estate ownership → `SWIYU_KYC_TAX` credential issued on-chain, Otsu auto-signs `CredentialAccept`
+3. **Incoming Deed Offers** panel — the app auto-polls every 15 seconds for NFT sell offers sent by the notary; click "Accept Deed" and sign `NFTokenAcceptOffer` with Otsu to receive the property title
+4. **Active Smart Escrows** panel — once the buyer locks XRP, the escrow appears automatically; click "Transfer Deed to Buyer" to create a `NFTokenCreateOffer` directed at the buyer (address and NFT ID are read from the escrow memo — no manual entry needed); a QR code with the Offer ID is available for the buyer if needed
+5. Receive XRP automatically when the notary finalizes the escrow
 
 ### Buyer
 
 1. Connect Otsu wallet
-2. Complete Swiss e-ID KYC via Swiyu — backend issues `SWIYU_KYC` credential on-chain
-3. Create the smart escrow:
+2. Complete Swiss e-ID KYC via Swiyu — scan the QR code with the SWIYU/eID app, backend issues `SWIYU_KYC` credential on-chain, Otsu wallet auto-signs `CredentialAccept`
+3. **Lock XRP** — create the smart escrow:
    - Enter the vendor address, NFT ID, and XRP amount
-   - Sign the `Payment` transaction (funds transferred to escrow account)
-   - Backend creates `EscrowCreate` with the WASM binary embedded as `FinishFunction`
-4. Enter the vendor's Offer ID and accept the NFT sell offer — sign `NFTokenAcceptOffer` to receive the property title NFT
-5. Finalize settlement — backend submits `EscrowFinish` with the buyer address memo; WASM verifies buyer holds the NFT and all 5 conditions, then releases funds to the seller
-6. View owned property titles in the portfolio tab
+   - Sign the `Payment` transaction with Otsu — backend submits it and creates `EscrowCreate` with the WASM binary embedded as `FinishFunction`
+4. **Accept deed & finalize** — single action once the vendor has transferred the deed:
+   - The app auto-discovers the incoming NFT sell offer by polling (no Offer ID entry needed)
+   - Sign `NFTokenAcceptOffer` with Otsu to receive the property title NFT
+   - App waits up to 120 seconds for on-chain confirmation of NFT ownership
+   - Backend automatically submits `EscrowFinish`; WASM verifies all 5 conditions and releases funds to the vendor
+5. View owned property titles in the portfolio section (always visible once KYC is complete)
 
-> If the session is interrupted, the buyer can resume any pending escrow by reconnecting the wallet — active escrows are retrieved from on-chain transaction history via buyer address matching.
+> If the session is interrupted, the buyer can resume any pending escrow from the Pending Escrows panel by reconnecting the wallet — active escrows are retrieved from on-chain transaction history via buyer address matching.
 
 ---
 
