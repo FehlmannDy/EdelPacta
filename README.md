@@ -55,9 +55,9 @@ If any condition fails, the Hook returns `0` and the escrow stays locked. The bu
 
 ```
 EdelPacta/
-├── backend/              # Express + Bun API (XRPL, IPFS, KYC verifier, escrow)
+├── backend/              # Express + Bun API (XRPL, KYC verifier, escrow)
 ├── contract/             # WASM Hook in Rust (xrpl-wasm-stdlib)
-│   └── src/lib.rs        # finish() — 6-condition escrow validation
+│   └── src/lib.rs        # finish() — 5-condition escrow validation
 ├── frontends/
 │   ├── notary/           # Notary UI — port 3000
 │   ├── vendor/           # Vendor/Seller UI — port 3001
@@ -66,7 +66,7 @@ EdelPacta/
 └── docker-compose.yml
 ```
 
-**Stack:** XRP Ledger · WASM Hooks (Rust) · XLS-20 NFTs · XLS-34 Credentials · Swiyu e-ID (OID4VP / SD-JWT) · IPFS (Kubo) · React + xrpl.js · Bun/Express
+**Stack:** XRP Ledger · WASM Hooks (Rust) · XLS-20 NFTs · XLS-34 Credentials · Swiyu e-ID (OID4VP / SD-JWT) · React + xrpl.js · Bun/Express
 
 ---
 
@@ -101,7 +101,6 @@ cp .env.example .env
 | `BETAID_ISSUER_DID` | yes | DID of the Swiyu betaid issuer for Swiss e-ID |
 | `XRPL_NETWORK` | no | XRPL WebSocket URL (default: `wss://wasm.devnet.rippletest.net:51233`) |
 | `VERIFIER_BASE_URL` | no | Swiyu OID4VP verifier URL (default: `https://beta-verifier.edel-id.ch`) |
-| `VITE_IPFS_GATEWAY` | no | IPFS gateway for frontends (default: `http://localhost:8080/ipfs`) |
 
 > Never commit `.env` — it contains wallet seeds. `.gitignore` already excludes it.
 
@@ -118,7 +117,7 @@ docker compose up --build
 | Notary UI | http://localhost:3000 |
 | Vendor UI | http://localhost:3001 |
 | Buyer UI | http://localhost:3002 |
-| IPFS gateway | http://localhost:8080 |
+| Backend API | http://localhost:8081 |
 
 ---
 
@@ -136,9 +135,6 @@ cd frontends/vendor && npm install && npm run dev   # port 3001
 
 # Buyer
 cd frontends/buyer && npm install && npm run dev    # port 3002
-
-# IPFS
-docker run -p 4001:4001 -p 5001:5001 -p 8080:8080 ipfs/kubo:latest
 ```
 
 ---
@@ -149,10 +145,9 @@ docker run -p 4001:4001 -p 5001:5001 -p 8080:8080 ipfs/kubo:latest
 
 1. Connect Otsu wallet
 2. Complete Swiss e-ID KYC via Swiyu — backend issues `SWIYU_KYC` credential on-chain
-3. Upload property metadata to IPFS
-4. Mint property title as an XLS-20 NFT — returns the `NFTokenID`
-5. Provide the NFT ID to the vendor (off-band)
-6. When the buyer has accepted the NFT sell offer and holds the title, sign the `EscrowFinish` transaction — the WASM Hook verifies all 5 conditions (including buyer NFT ownership) and releases funds atomically
+3. Mint property title as an XLS-20 NFT with the desired URI — returns the `NFTokenID`
+4. Provide the NFT ID to the vendor (off-band)
+5. When the buyer has accepted the NFT sell offer and holds the title, sign the `EscrowFinish` transaction — the WASM Hook verifies all 5 conditions (including buyer NFT ownership) and releases funds atomically
 
 ### Vendor (Seller)
 
