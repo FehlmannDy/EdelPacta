@@ -1,15 +1,15 @@
-import { useRef, useState } from "react";
-import { useWallet } from "@shared/hooks/useWallet";
 import { WalletBar } from "@shared/components/WalletBar";
-import { KYCGate } from "./components/KYCGate";
-import { KYCStep } from "./hooks/useKYC";
-import { kycApi } from "./api/kyc";
+import { useWallet } from "@shared/hooks/useWallet";
+import { useRef, useState } from "react";
 import { CreateEscrowResult } from "./api/escrow";
+import { kycApi } from "./api/kyc";
+import { AcceptNft } from "./components/AcceptNft";
 import { EscrowCreate } from "./components/EscrowCreate";
 import { EscrowFinish } from "./components/EscrowFinish";
-import { AcceptNft } from "./components/AcceptNft";
+import { KYCGate } from "./components/KYCGate";
 import { OwnedNFTs, OwnedNFTsHandle } from "./components/OwnedNFTs";
 import { PendingEscrows } from "./components/PendingEscrows";
+import { KYCStep } from "./hooks/useKYC";
 
 type FlowStep = "create" | "accept" | "finish" | "done";
 
@@ -126,18 +126,22 @@ export default function App() {
               </button>
             )}
             {resetError && <span className="field-error">{resetError}</span>}
-            {kycStep === "done" && FLOW_STEPS.map((s, i) => {
-              const currentIdx = FLOW_STEPS.indexOf(flowStep);
-              const isDone = flowStep === "done" || currentIdx > i;
-              const isActive = flowStep !== "done" && flowStep === s;
-              return (
-                <span key={s} className={`kyc-badge${isDone ? " kyc-badge--done" : isActive ? " kyc-badge--pending" : ""}`}
-                  style={{ borderColor: isDone || isActive ? undefined : "#c8bfb2", color: isDone || isActive ? undefined : "#c8bfb2" }}>
-                  {i > 0 && <span style={{ marginRight: "0.3rem", opacity: 0.5 }}>›</span>}
-                  {FLOW_LABELS[i]}
-                </span>
-              );
-            })}
+            {kycStep === "done" && (
+              <div className="header-flow" aria-label="Purchase flow progress">
+                {FLOW_STEPS.map((s, i) => {
+                  const currentIdx = FLOW_STEPS.indexOf(flowStep);
+                  const isDone = flowStep === "done" || currentIdx > i;
+                  const isActive = flowStep !== "done" && flowStep === s;
+                  return (
+                    <span key={s} className={`kyc-badge${isDone ? " kyc-badge--done" : isActive ? " kyc-badge--pending" : ""}`}
+                      style={{ borderColor: isDone || isActive ? undefined : "#c8bfb2", color: isDone || isActive ? undefined : "#c8bfb2" }}>
+                      {i > 0 && <span style={{ marginRight: "0.3rem", opacity: 0.5 }}>›</span>}
+                      {FLOW_LABELS[i]}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
       </header>
@@ -183,7 +187,7 @@ export default function App() {
               <div className="form-card">
                 <h2>Settlement Complete</h2>
                 <p className="info" style={{ fontSize: "0.85rem", lineHeight: 1.7 }}>
-                  The atomic settlement is complete. The seller received the XRP and
+                  The atomic settlement is complete. The vendor received the XRP and
                   you now hold the property title deed on-chain.
                 </p>
                 <button className="btn-secondary" onClick={handleNewPurchase}>
@@ -193,7 +197,7 @@ export default function App() {
             )}
 
             {wallet.address && (
-              <PendingEscrows address={wallet.address} onResume={handleResumeEscrow} />
+              <PendingEscrows address={wallet.address} sign={wallet.sign} onResume={handleResumeEscrow} />
             )}
 
             {wallet.address && (

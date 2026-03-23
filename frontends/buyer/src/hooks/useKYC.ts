@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { kycApi, CredentialStatus } from "../api/kyc";
-import { kycLog } from "../logger";
+import { kycLog } from "@shared/logger";
 import { readSSEStream } from "@shared/utils/readSSEStream";
 
 export type KYCStep =

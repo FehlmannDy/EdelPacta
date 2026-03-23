@@ -3,25 +3,38 @@ import { QRCodeSVG } from "qrcode.react";
 import { nftApi, PendingOffer } from "../api/nft";
 import { nftLog } from "@shared/logger";
 import { Copyable } from "@shared/components/Copyable";
+import { Modal } from "@shared/components/Modal";
 import { SkeletonCard } from "@shared/components/SkeletonCard";
+import { useToast } from "@shared/context/ToastContext";
 import { translateXrplError } from "@shared/utils/xrplErrors";
 import { xrplEpochToDate } from "@shared/utils/xrplEpoch";
 
-interface Props { address: string; }
 export interface PendingOffersHandle { load: () => void; }
 
-export const PendingOffers = forwardRef<PendingOffersHandle, Props>(function PendingOffers({ address }, ref) {
+export const PendingOffers = forwardRef<PendingOffersHandle, object>(function PendingOffers(_props, ref) {
+  const { addToast } = useToast();
+  const [issuerAddress, setIssuerAddress] = useState<string | null>(null);
   const [offers, setOffers] = useState<PendingOffer[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [qrId, setQrId] = useState<string | null>(null);
+  const [cancelConfirmId, setCancelConfirmId] = useState<string | null>(null);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/kyc/issuer")
+      .then((r) => r.json() as Promise<{ issuer: string }>)
+      .then((d) => setIssuerAddress(d.issuer))
+      .catch(() => {});
+  }, []);
 
   const load = async () => {
+    if (!issuerAddress) return;
     setLoading(true);
     setError(null);
     try {
-      nftLog.info("loading outgoing offers", { address });
-      const result = await nftApi.outgoingOffers(address);
+      nftLog.info("loading outgoing offers", { issuerAddress });
+      const result = await nftApi.outgoingOffers(issuerAddress);
       setOffers(result);
     } catch (err) {
       nftLog.error("failed to load outgoing offers", { err });
@@ -31,8 +44,26 @@ export const PendingOffers = forwardRef<PendingOffersHandle, Props>(function Pen
     }
   };
 
+  const handleCancel = async (offer: PendingOffer) => {
+    setCancelConfirmId(null);
+    setCancellingId(offer.offerId);
+    try {
+      nftLog.info("cancelling offer", { offerId: offer.offerId });
+      await nftApi.issuerCancelOffer({ offerIds: [offer.offerId] });
+      nftLog.info("burning deed", { nftokenId: offer.nftokenId });
+      await nftApi.issuerBurn({ nftokenId: offer.nftokenId });
+      addToast("Transfer offer cancelled and deed burned.", "success");
+      load();
+    } catch (err) {
+      nftLog.error("cancel/burn failed", { err });
+      addToast(translateXrplError(err), "error");
+    } finally {
+      setCancellingId(null);
+    }
+  };
+
   useImperativeHandle(ref, () => ({ load }));
-  useEffect(() => { load(); }, [address]);
+  useEffect(() => { load(); }, [issuerAddress]);
 
   const sellOffers = offers.filter((o) => o.isSellOffer);
 
@@ -61,6 +92,15 @@ export const PendingOffers = forwardRef<PendingOffersHandle, Props>(function Pen
 
       {sellOffers.map((offer) => (
         <div key={offer.offerId} className="result">
+          <Modal
+            open={cancelConfirmId === offer.offerId}
+            title="Cancel Offer & Burn Deed"
+            danger
+            message="Cancel this transfer offer and permanently burn the deed? This cannot be undone."
+            confirmLabel="Cancel & Burn"
+            onConfirm={() => handleCancel(offer)}
+            onCancel={() => setCancelConfirmId(null)}
+          />
           <p>
             <strong>Offer ID</strong><br />
             <Copyable text={offer.offerId} truncate={10} />
@@ -78,12 +118,21 @@ export const PendingOffers = forwardRef<PendingOffersHandle, Props>(function Pen
               Expires {xrplEpochToDate(offer.expiration).toLocaleString()}
             </p>
           )}
-          <button
-            onClick={() => setQrId(qrId === offer.offerId ? null : offer.offerId)}
-            style={{ alignSelf: "flex-start", padding: "0.3rem 0.8rem", fontSize: "0.68rem", background: "transparent", border: "1px solid #c8bfb2", color: "#6b5a44" }}
-          >
-            {qrId === offer.offerId ? "Hide QR" : "Show QR"}
-          </button>
+          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+            <button
+              onClick={() => setQrId(qrId === offer.offerId ? null : offer.offerId)}
+              style={{ alignSelf: "flex-start", padding: "0.3rem 0.8rem", fontSize: "0.68rem", background: "transparent", border: "1px solid #c8bfb2", color: "#6b5a44" }}
+            >
+              {qrId === offer.offerId ? "Hide QR" : "Show QR"}
+            </button>
+            <button
+              onClick={() => setCancelConfirmId(offer.offerId)}
+              disabled={cancellingId !== null}
+              style={{ alignSelf: "flex-start", padding: "0.3rem 0.8rem", fontSize: "0.68rem", background: "transparent", border: "1px solid #9b2a2a", color: "#9b2a2a" }}
+            >
+              {cancellingId === offer.offerId ? "…" : "Cancel Offer"}
+            </button>
+          </div>
           {qrId === offer.offerId && (
             <div style={{ display: "flex", justifyContent: "center", padding: "0.75rem 0" }}>
               <QRCodeSVG value={offer.offerId} size={160} bgColor="#ede8dc" fgColor="#1a120a" />

@@ -55,14 +55,6 @@ export interface OfferDetails {
 }
 
 export const nftApi = {
-  prepareMint: (params: {
-    account: string;
-    taxon: number;
-    uri?: string;
-    transferFee?: number;
-    flags?: number;
-  }) => post<PreparedTx>("/prepare/mint", params),
-
   prepareTransferOffer: (params: {
     account: string;
     nftokenId: string;
@@ -111,4 +103,7 @@ export const nftApi = {
 
   outgoingOffers: (address: string) =>
     get<{ offers: NFTOffer[] }>(`/offers/outgoing/${address}`).then((r) => r.offers),
+
+  prepareCancelOffer: (params: { account: string; offerIds: string[] }) =>
+    post<PreparedTx>("/prepare/cancel-offer", params),
 };

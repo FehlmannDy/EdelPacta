@@ -6,23 +6,11 @@ services:
     volumes:
       - wasm_build:/output
 
-  ipfs:
-    image: ipfs/kubo:latest
-    ports:
-      - "4001:4001"
-      - "4001:4001/udp"
-      - "127.0.0.1:5001:5001"
-      - "8091:8080"
-    volumes:
-      - ipfs_data:/data/ipfs
-
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     depends_on:
-      ipfs:
-        condition: service_started
       contract-builder:
         condition: service_completed_successfully
     ports:
@@ -35,7 +23,6 @@ services:
       - BETAID_ISSUER_DID=${BETAID_ISSUER_DID}
       - XRPL_NETWORK=${XRPL_NETWORK:-wss://wasm.devnet.rippletest.net:51233}
       - VERIFIER_BASE_URL=${VERIFIER_BASE_URL:-https://beta-verifier.edel-id.ch}
-      - KUBO_URL=http://ipfs:5001
       - ORACLE_SEED=${ORACLE_SEED}
       - ESCROW_WASM_PATH=/app/wasm/my_contract_devnet.wasm
       - CORS_ORIGINS=http://localhost:3002
@@ -46,8 +33,6 @@ services:
     build:
       context: ./frontends
       dockerfile: notary/Dockerfile
-      args:
-        - VITE_IPFS_GATEWAY=${VITE_IPFS_GATEWAY}
     depends_on:
       - backend
     ports:
@@ -57,8 +42,6 @@ services:
     build:
       context: ./frontends
       dockerfile: vendor/Dockerfile
-      args:
-        - VITE_IPFS_GATEWAY=${VITE_IPFS_GATEWAY}
     depends_on:
       - backend
     ports:
@@ -69,12 +52,11 @@ services:
       context: ./frontends
       dockerfile: buyer/Dockerfile
       args:
-        - VITE_API_BASE_URL=${VITE_BUYER_API_URL:-http://localhost:8080}
+        - VITE_API_BASE_URL=
     depends_on:
       - backend
     ports:
       - "3002:80"
 
 volumes:
-  ipfs_data:
   wasm_build:

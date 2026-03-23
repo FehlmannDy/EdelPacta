@@ -1,1 +1,1 @@
-export const TX_STEPS = ["Prepare", "Sign", "Submit"];
+export { TX_STEPS } from "@shared/utils/constants";

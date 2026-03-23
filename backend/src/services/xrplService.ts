@@ -53,6 +53,51 @@ export interface MintNFTResult {
   account: string;
 }
 
+export interface BurnNFTResult {
+  txHash: string;
+  account: string;
+}
+
+export async function cancelNFTOffer(params: { seed: string; offerIds: string[]; networkUrl?: string }): Promise<{ txHash: string }> {
+  const { seed, offerIds, networkUrl = DEFAULT_NETWORK } = params;
+  return withClient(networkUrl, async (client) => {
+    const wallet = Wallet.fromSeed(seed);
+    const tx = {
+      TransactionType: "NFTokenCancelOffer" as const,
+      Account: wallet.address,
+      NFTokenOffers: offerIds,
+    };
+    const prepared = await client.autofill(tx);
+    const signed = wallet.sign(prepared);
+    const result = await client.submitAndWait(signed.tx_blob);
+    const meta = result.result.meta as { TransactionResult: string } | undefined;
+    if (!meta || typeof meta === "string" || meta.TransactionResult !== "tesSUCCESS") {
+      throw new Error(`Cancel failed: ${typeof meta === "string" ? meta : meta?.TransactionResult}`);
+    }
+    return { txHash: signed.hash };
+  });
+}
+
+export async function burnNFT(params: { seed: string; nftokenId: string; networkUrl?: string }): Promise<BurnNFTResult> {
+  const { seed, nftokenId, networkUrl = DEFAULT_NETWORK } = params;
+  return withClient(networkUrl, async (client) => {
+    const wallet = Wallet.fromSeed(seed);
+    const burnTx: NFTokenBurn = {
+      TransactionType: "NFTokenBurn",
+      Account: wallet.address,
+      NFTokenID: nftokenId,
+    };
+    const prepared = await client.autofill(burnTx);
+    const signed = wallet.sign(prepared);
+    const result = await client.submitAndWait(signed.tx_blob);
+    const meta = result.result.meta as { TransactionResult: string } | undefined;
+    if (!meta || typeof meta === "string" || meta.TransactionResult !== "tesSUCCESS") {
+      throw new Error(`Burn failed: ${typeof meta === "string" ? meta : meta?.TransactionResult}`);
+    }
+    return { txHash: signed.hash, account: wallet.address };
+  });
+}
+
 export async function mintNFT(params: MintNFTParams): Promise<MintNFTResult> {
   const {
     seed,
@@ -393,31 +438,6 @@ export async function getAccountNFTs(account: string, networkUrl = DEFAULT_NETWO
 // Prepare (unsigned) + Submit (signed blob) — for frontend wallet signing
 // ---------------------------------------------------------------------------
 
-export interface PrepareMintParams {
-  account: string;
-  taxon: number;
-  uri?: string;
-  transferFee?: number;
-  flags?: number;
-  networkUrl?: string;
-}
-
-export async function prepareMintTx(params: PrepareMintParams): Promise<Record<string, unknown>> {
-  const { account, taxon, uri, transferFee = 0, flags = NFTokenMintFlags.tfTransferable, networkUrl = DEFAULT_NETWORK } = params;
-
-  return withClient(networkUrl, async (client) => {
-    const tx: NFTokenMint = {
-      TransactionType: "NFTokenMint",
-      Account: account,
-      NFTokenTaxon: taxon,
-      Flags: flags,
-      TransferFee: transferFee,
-      ...(uri && { URI: convertStringToHex(uri) }),
-    };
-    return await client.autofill(tx) as unknown as Record<string, unknown>;
-  });
-}
-
 export interface PrepareBurnParams {
   account: string;
   nftokenId: string;
@@ -601,54 +621,6 @@ export async function createTransferOffer(
     }
 
     return { offerId, txHash: signed.hash };
-  });
-}
-
-export interface AcceptTransferOfferParams {
-  /** Wallet seed of the recipient (the one accepting the sell offer) */
-  seed: string;
-  /** Offer ID returned by createTransferOffer */
-  offerId: string;
-  networkUrl?: string;
-}
-
-export interface AcceptTransferOfferResult {
-  txHash: string;
-  account: string;
-}
-
-export async function acceptTransferOffer(
-  params: AcceptTransferOfferParams
-): Promise<AcceptTransferOfferResult> {
-  const {
-    seed,
-    offerId,
-    networkUrl = DEFAULT_NETWORK,
-  } = params;
-
-  return withClient(networkUrl, async (client) => {
-    const wallet = Wallet.fromSeed(seed);
-
-    const acceptTx: NFTokenAcceptOffer = {
-      TransactionType: "NFTokenAcceptOffer",
-      Account: wallet.address,
-      NFTokenSellOffer: offerId,
-    };
-
-    const prepared = await client.autofill(acceptTx);
-    const signed = wallet.sign(prepared);
-    const result = await client.submitAndWait(signed.tx_blob);
-
-    const meta = result.result.meta as Record<string, unknown> | undefined;
-    if (!meta || typeof meta === "string") {
-      throw new Error("Unexpected transaction metadata format");
-    }
-
-    if (meta["TransactionResult"] !== "tesSUCCESS") {
-      throw new Error(`Transaction failed: ${meta["TransactionResult"]}`);
-    }
-
-    return { txHash: signed.hash, account: wallet.address };
   });
 }
 

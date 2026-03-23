@@ -2,10 +2,10 @@ import { Router, Request, Response } from "express";
 import logger from "../logger";
 import {
   mintNFT,
+  burnNFT,
+  cancelNFTOffer,
   NFTokenMintFlags,
   createTransferOffer,
-  acceptTransferOffer,
-  prepareMintTx,
   prepareBurnTx,
   prepareTransferOfferTx,
   prepareAcceptOfferTx,
@@ -20,171 +20,9 @@ import {
 
 const router = Router();
 
-/**
- * POST /api/nft/mint
- *
- * Mint an XLS-20 NFT on the XRPL.
- *
- * Body (JSON):
- *   seed        {string}  required — wallet family seed (e.g. "sEd...")
- *   taxon       {number}  required — NFT taxon (uint32 grouping identifier)
- *   uri         {string}  optional — metadata URI (e.g. IPFS link), max 256 bytes
- *   transferFee {number}  optional — basis points 0–50000 (default 0)
- *   flags       {number}  optional — NFTokenMint flags bitmask (default: tfTransferable)
- *   networkUrl  {string}  optional — XRPL WebSocket URL (default: testnet)
- *
- * Response 200:
- *   { nftokenId, txHash, account }
- *
- * Response 400: missing/invalid parameters
- * Response 500: XRPL or internal error
- */
-router.post("/mint", async (req: Request, res: Response): Promise<void> => {
-  const { seed, taxon, uri, transferFee, flags, networkUrl } = req.body;
-
-  if (!seed || typeof seed !== "string") {
-    res.status(400).json({ error: "Missing required field: seed" });
-    return;
-  }
-
-  if (taxon === undefined || taxon === null || typeof taxon !== "number" || !Number.isInteger(taxon) || taxon < 0) {
-    res.status(400).json({ error: "Missing or invalid field: taxon (must be a non-negative integer)" });
-    return;
-  }
-
-  if (transferFee !== undefined && (typeof transferFee !== "number" || transferFee < 0 || transferFee > 50000)) {
-    res.status(400).json({ error: "Invalid field: transferFee must be between 0 and 50000" });
-    return;
-  }
-
-  if (uri !== undefined && typeof uri !== "string") {
-    res.status(400).json({ error: "Invalid field: uri must be a string" });
-    return;
-  }
-
-  if (uri && Buffer.byteLength(uri, "utf8") > 256) {
-    res.status(400).json({ error: "Invalid field: uri must be 256 bytes or less" });
-    return;
-  }
-
-  try {
-    logger.info({ taxon, uri, flags }, "nft: minting");
-    const result = await mintNFT({ seed, taxon, uri, transferFee, flags, networkUrl });
-    logger.info({ account: result.account, nftokenId: result.nftokenId, txHash: result.txHash }, "nft: minted");
-    res.status(200).json(result);
-  } catch (err) {
-    logger.error({ err }, "nft: mint failed");
-    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
-  }
-});
-
-/**
- * POST /api/nft/transfer/offer
- *
- * Step 1 of a transfer: the current owner creates a sell offer for 0 XRP.
- *
- * Body (JSON):
- *   seed        {string}  required — owner's wallet seed
- *   nftokenId   {string}  required — NFTokenID to transfer
- *   destination {string}  optional — recipient address (restricts who can accept)
- *   amount      {string}  optional — XRP drops, default "0" (free transfer)
- *   networkUrl  {string}  optional
- *
- * Response 200:
- *   { offerId, txHash }
- */
-router.post("/transfer/offer", async (req: Request, res: Response): Promise<void> => {
-  const { seed, nftokenId, destination, amount, networkUrl } = req.body;
-
-  if (!seed || typeof seed !== "string") {
-    res.status(400).json({ error: "Missing required field: seed" });
-    return;
-  }
-
-  if (!nftokenId || typeof nftokenId !== "string") {
-    res.status(400).json({ error: "Missing required field: nftokenId" });
-    return;
-  }
-
-  try {
-    logger.info({ nftokenId, destination }, "nft: creating transfer offer");
-    const result = await createTransferOffer({ seed, nftokenId, destination, amount, networkUrl });
-    logger.info({ nftokenId, offerId: result.offerId, txHash: result.txHash }, "nft: transfer offer created");
-    res.status(200).json(result);
-  } catch (err) {
-    logger.error({ nftokenId, err }, "nft: transfer offer creation failed");
-    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
-  }
-});
-
-/**
- * POST /api/nft/transfer/accept
- *
- * Step 2 of a transfer: the recipient accepts the sell offer.
- *
- * Body (JSON):
- *   seed       {string}  required — recipient's wallet seed
- *   offerId    {string}  required — offer ID from /transfer/offer
- *   networkUrl {string}  optional
- *
- * Response 200:
- *   { txHash, account }
- */
-router.post("/transfer/accept", async (req: Request, res: Response): Promise<void> => {
-  const { seed, offerId, networkUrl } = req.body;
-
-  if (!seed || typeof seed !== "string") {
-    res.status(400).json({ error: "Missing required field: seed" });
-    return;
-  }
-
-  if (!offerId || typeof offerId !== "string") {
-    res.status(400).json({ error: "Missing required field: offerId" });
-    return;
-  }
-
-  try {
-    logger.info({ offerId }, "nft: accepting transfer offer");
-    const result = await acceptTransferOffer({ seed, offerId, networkUrl });
-    logger.info({ offerId, txHash: result.txHash, account: result.account }, "nft: transfer offer accepted");
-    res.status(200).json(result);
-  } catch (err) {
-    logger.error({ offerId, err }, "nft: accept transfer offer failed");
-    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
-  }
-});
-
 // ---------------------------------------------------------------------------
 // Prepare + Submit endpoints (for frontend wallet signing via Otsu/GemWallet)
 // ---------------------------------------------------------------------------
-
-/**
- * POST /api/nft/prepare/mint
- * Returns an unsigned, autofilled NFTokenMint transaction for the wallet to sign.
- * Body: { account, taxon, uri?, transferFee?, flags?, networkUrl? }
- */
-router.post("/prepare/mint", async (req: Request, res: Response): Promise<void> => {
-  const { account, taxon, uri, transferFee, flags, networkUrl } = req.body;
-
-  if (!account || typeof account !== "string") {
-    res.status(400).json({ error: "Missing required field: account" });
-    return;
-  }
-  if (taxon === undefined || typeof taxon !== "number" || !Number.isInteger(taxon) || taxon < 0) {
-    res.status(400).json({ error: "Missing or invalid field: taxon" });
-    return;
-  }
-
-  try {
-    logger.info({ account, taxon, uri, flags }, "nft: preparing mint tx");
-    const tx = await prepareMintTx({ account, taxon, uri, transferFee, flags, networkUrl });
-    logger.info({ account, taxon }, "nft: mint tx prepared");
-    res.json(tx);
-  } catch (err) {
-    logger.error({ account, err }, "nft: prepare mint tx failed");
-    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
-  }
-});
 
 /**
  * POST /api/nft/prepare/burn
@@ -428,6 +266,115 @@ router.get("/offer/:offerId", async (req: Request, res: Response): Promise<void>
  */
 router.get("/flags", (_req: Request, res: Response): void => {
   res.json(NFTokenMintFlags);
+});
+
+// ---------------------------------------------------------------------------
+// Issuer-signed endpoints (backend signs with ISSUER_SEED — no Otsu needed)
+// ---------------------------------------------------------------------------
+
+function getIssuerSeed(res: Response): string | null {
+  const seed = process.env.ISSUER_SEED;
+  if (!seed) {
+    res.status(500).json({ error: "ISSUER_SEED not configured on server" });
+    return null;
+  }
+  return seed;
+}
+
+/**
+ * POST /api/nft/issuer-mint
+ * Mints an NFT using the server-side ISSUER_SEED wallet.
+ * Body: { taxon, uri?, transferFee?, flags? }
+ */
+router.post("/issuer-mint", async (req: Request, res: Response): Promise<void> => {
+  const seed = getIssuerSeed(res);
+  if (!seed) return;
+  const { taxon, uri, transferFee, flags } = req.body;
+  if (taxon === undefined || typeof taxon !== "number" || !Number.isInteger(taxon) || taxon < 0) {
+    res.status(400).json({ error: "Missing or invalid field: taxon" });
+    return;
+  }
+  try {
+    logger.info({ taxon, uri, flags }, "nft: issuer minting");
+    const result = await mintNFT({ seed, taxon, uri, transferFee, flags });
+    logger.info({ account: result.account, nftokenId: result.nftokenId }, "nft: issuer minted");
+    res.json(result);
+  } catch (err) {
+    logger.error({ err }, "nft: issuer mint failed");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+  }
+});
+
+/**
+ * POST /api/nft/issuer-transfer-offer
+ * Creates an NFT sell offer using the server-side ISSUER_SEED wallet.
+ * Body: { nftokenId, destination? }
+ */
+router.post("/issuer-transfer-offer", async (req: Request, res: Response): Promise<void> => {
+  const seed = getIssuerSeed(res);
+  if (!seed) return;
+  const { nftokenId, destination } = req.body;
+  if (!nftokenId || typeof nftokenId !== "string") {
+    res.status(400).json({ error: "Missing required field: nftokenId" });
+    return;
+  }
+  try {
+    logger.info({ nftokenId, destination }, "nft: issuer creating transfer offer");
+    const result = await createTransferOffer({ seed, nftokenId, destination });
+    logger.info({ nftokenId, offerId: result.offerId }, "nft: issuer transfer offer created");
+    res.json(result);
+  } catch (err) {
+    logger.error({ err }, "nft: issuer transfer offer failed");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+  }
+});
+
+/**
+ * POST /api/nft/issuer-cancel-offer
+ * Cancels one or more NFT sell offers using the server-side ISSUER_SEED wallet.
+ * Body: { offerIds }
+ */
+router.post("/issuer-cancel-offer", async (req: Request, res: Response): Promise<void> => {
+  const seed = getIssuerSeed(res);
+  if (!seed) return;
+  const { offerIds } = req.body;
+  if (!Array.isArray(offerIds) || offerIds.length === 0 || offerIds.some((id) => typeof id !== "string")) {
+    res.status(400).json({ error: "Missing or invalid field: offerIds (must be a non-empty array of strings)" });
+    return;
+  }
+  try {
+    logger.info({ offerIds }, "nft: issuer cancelling offers");
+    const result = await cancelNFTOffer({ seed, offerIds });
+    logger.info({ offerIds, txHash: result.txHash }, "nft: issuer offers cancelled");
+    res.json(result);
+  } catch (err) {
+    logger.error({ err }, "nft: issuer cancel offer failed");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+  }
+});
+
+/**
+ * POST /api/nft/issuer-burn
+ * Burns an NFT using the server-side ISSUER_SEED wallet.
+ * Body: { nftokenId }
+ */
+router.post("/issuer-burn", async (req: Request, res: Response): Promise<void> => {
+  const seed = getIssuerSeed(res);
+  if (!seed) return;
+  const { nftokenId } = req.body;
+  if (!nftokenId || typeof nftokenId !== "string") {
+    res.status(400).json({ error: "Missing required field: nftokenId" });
+    return;
+  }
+  try {
+    logger.info({ nftokenId }, "nft: issuer burning");
+    const result = await burnNFT({ seed, nftokenId });
+    logger.info({ nftokenId, txHash: result.txHash }, "nft: issuer burned");
+    res.json(result);
+  } catch (err) {
+    logger.error({ err }, "nft: issuer burn failed");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+  }
 });
 
 export default router;

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { escrowApi, CreateEscrowResult } from "../api/escrow";
-import { escrowLog } from "../logger";
+import { escrowLog } from "@shared/logger";
 import { Stepper } from "@shared/components/Stepper";
 import { Copyable } from "@shared/components/Copyable";
 import { useToast } from "@shared/context/ToastContext";
@@ -132,10 +132,10 @@ export function EscrowCreate({ buyerAddress, sign, onCreated }: Props) {
       </p>
 
       <label>
-        Seller Address
+        Vendor Address
         <input
           type="text"
-          placeholder="rXXX… — seller's XRPL address"
+          placeholder="rXXX… — vendor's XRPL address"
           value={sellerAddress}
           onChange={(e) => setSellerAddress(e.target.value)}
           disabled={loading}

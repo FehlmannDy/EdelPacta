@@ -2,7 +2,6 @@ import { useState, useRef } from "react";
 import { useWallet } from "@shared/hooks/useWallet";
 import { WalletBar } from "@shared/components/WalletBar";
 import { KYCGate } from "./components/KYCGate";
-import { NFTList, NFTListHandle } from "./components/NFTList";
 import { MintForm } from "./components/MintForm";
 import { PendingOffers, PendingOffersHandle } from "./components/PendingOffers";
 import { KYCStep } from "./hooks/useKYC";
@@ -30,7 +29,6 @@ export default function App() {
   const [kycKey, setKycKey] = useState(0);
   const [resettingKYC, setResettingKYC] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
-  const listRef = useRef<NFTListHandle>(null);
   const pendingRef = useRef<PendingOffersHandle>(null);
 
   const handleResetKYC = async () => {
@@ -93,14 +91,8 @@ export default function App() {
           </div>
         ) : (
           <KYCGate key={kycKey} address={wallet.address!} sign={wallet.sign} onStep={setKycStep}>
-            <NFTList ref={listRef} address={wallet.address!} sign={wallet.sign} onTransfer={() => pendingRef.current?.load()} onBurned={() => pendingRef.current?.load()} />
-
-            <PendingOffers ref={pendingRef} address={wallet.address!} />
-            <MintForm
-              address={wallet.address!}
-              sign={wallet.sign}
-              onMinted={() => listRef.current?.load()}
-            />
+            <MintForm onMinted={() => pendingRef.current?.load()} />
+            <PendingOffers ref={pendingRef} />
           </KYCGate>
         )}
       </main>

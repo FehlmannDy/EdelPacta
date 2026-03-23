@@ -1,9 +1,9 @@
-import { useState } from "react";
-import { escrowApi, CreateEscrowResult } from "../api/escrow";
-import { escrowLog } from "../logger";
-import { Stepper } from "@shared/components/Stepper";
 import { Copyable } from "@shared/components/Copyable";
+import { Stepper } from "@shared/components/Stepper";
 import { useToast } from "@shared/context/ToastContext";
+import { escrowLog } from "@shared/logger";
+import { useCallback, useEffect, useState } from "react";
+import { CreateEscrowResult, escrowApi } from "../api/escrow";
 
 interface Props {
   escrow: CreateEscrowResult & { nftId: string };
@@ -17,10 +17,13 @@ export function EscrowFinish({ escrow, onFinished }: Props) {
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState(-1);
   const [finishHash, setFinishHash] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleFinish = async () => {
+  const handleFinish = useCallback(async () => {
+    if (loading || finishHash) return;
     setLoading(true);
     setStep(0);
+    setError(null);
     try {
       escrowLog.info("submitting EscrowFinish", { escrow });
       setStep(1);
@@ -32,15 +35,21 @@ export function EscrowFinish({ escrow, onFinished }: Props) {
       setStep(2);
       escrowLog.info("escrow finished", res);
       setFinishHash(res.hash);
-      addToast("Escrow finalized — XRP released to seller.", "success");
+      addToast("Escrow finalized — XRP released to vendor.", "success");
     } catch (err) {
       escrowLog.error("finish failed", { err });
-      addToast(err instanceof Error ? err.message : "EscrowFinish failed", "error");
+      const message = err instanceof Error ? err.message : "EscrowFinish failed";
+      addToast(message, "error");
+      setError(message);
       setStep(-1);
     } finally {
       setLoading(false);
     }
-  };
+  }, [addToast, escrow, finishHash, loading]);
+
+  useEffect(() => {
+    void handleFinish();
+  }, [handleFinish]);
 
   if (finishHash) {
     return (
@@ -50,7 +59,7 @@ export function EscrowFinish({ escrow, onFinished }: Props) {
           <p><strong>Finish Tx Hash</strong><br /><Copyable text={finishHash} truncate={10} /></p>
         </div>
         <p className="info" style={{ fontSize: "0.82rem", lineHeight: 1.7 }}>
-          All WASM checks passed. XRP released to the seller.
+          All WASM checks passed. XRP released to the vendor.
         </p>
         <button onClick={() => onFinished(finishHash)}>
           Continue →
@@ -63,8 +72,8 @@ export function EscrowFinish({ escrow, onFinished }: Props) {
     <section className="form-card">
       <h2>Finalize Escrow</h2>
       <p className="info" style={{ fontSize: "0.85rem", lineHeight: 1.7 }}>
-        The notary submits EscrowFinish. The on-chain WASM verifies notary authorization,
-        seller KYC, buyer NFT ownership, and dual cryptographic signatures.
+        The notary submits EscrowFinish automatically. The on-chain WASM verifies notary
+        authorization, vendor KYC, buyer NFT ownership, and dual cryptographic signatures.
       </p>
 
       <div className="result" style={{ marginBottom: "1rem" }}>
@@ -75,10 +84,19 @@ export function EscrowFinish({ escrow, onFinished }: Props) {
       </div>
 
       {step >= 0 && <Stepper steps={STEPS} current={step} />}
-
-      <button onClick={handleFinish} disabled={loading}>
-        {loading ? "Running WASM checks…" : "Finalize & Release XRP"}
-      </button>
+      {loading && (
+        <p className="info" style={{ fontSize: "0.82rem", marginTop: "0.75rem" }}>
+          Running WASM checks and waiting for validated ledger state…
+        </p>
+      )}
+      {!loading && error && (
+        <>
+          <p className="error" style={{ marginTop: "0.75rem" }}>{error}</p>
+          <button onClick={() => void handleFinish()}>
+            Retry Finalization
+          </button>
+        </>
+      )}
     </section>
   );
 }

@@ -48,4 +48,6 @@ export const escrowApi = {
   byBuyer: (address: string) =>
     get<{ escrows: EscrowObject[] }>(`/by-buyer/${address}`),
 
+  prepareCancel: (params: { cancellerAddress: string; ownerAddress: string; offerSequence: number }) =>
+    post<Record<string, unknown>>("/prepare-cancel", params),
 };

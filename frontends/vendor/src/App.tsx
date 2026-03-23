@@ -1,11 +1,13 @@
-import { useState, useRef } from "react";
-import { useWallet } from "@shared/hooks/useWallet";
 import { WalletBar } from "@shared/components/WalletBar";
+import { useWallet } from "@shared/hooks/useWallet";
+import { useRef, useState } from "react";
+import { kycApi } from "./api/kyc";
+import { IncomingOffers } from "./components/IncomingOffers";
 import { KYCGate } from "./components/KYCGate";
 import { OwnedNFTs, OwnedNFTsHandle } from "./components/OwnedNFTs";
-import { IncomingOffers } from "./components/IncomingOffers";
+import { PendingEscrows } from "./components/PendingEscrows";
+import { SuccessfulEscrows } from "./components/SuccessfulEscrows";
 import { KYCStep } from "./hooks/useKYC";
-import { kycApi } from "./api/kyc";
 
 function KYCBadge({ step }: { step: KYCStep | null }) {
   if (!step || step === "checking") return null;
@@ -30,13 +32,11 @@ function KYCBadge({ step }: { step: KYCStep | null }) {
 
 export default function App() {
   const wallet = useWallet();
+  const ownedNFTsRef = useRef<OwnedNFTsHandle>(null);
   const [kycStep, setKycStep] = useState<KYCStep | null>(null);
   const [kycKey, setKycKey] = useState(0);
   const [resettingKYC, setResettingKYC] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
-  const ownedRef = useRef<OwnedNFTsHandle>(null);
-
-
   const handleResetKYC = async () => {
     if (!wallet.address || resettingKYC) return;
     setResettingKYC(true);
@@ -97,12 +97,10 @@ export default function App() {
           </div>
         ) : (
           <KYCGate key={kycKey} address={wallet.address!} sign={wallet.sign} onStep={setKycStep}>
-            <OwnedNFTs ref={ownedRef} address={wallet.address!} sign={wallet.sign} />
-            <IncomingOffers
-              address={wallet.address!}
-              sign={wallet.sign}
-              onAccepted={() => ownedRef.current?.load()}
-            />
+            <IncomingOffers address={wallet.address!} sign={wallet.sign} onAccepted={() => ownedNFTsRef.current?.load()} />
+            <OwnedNFTs ref={ownedNFTsRef} address={wallet.address!} sign={wallet.sign} />
+            <PendingEscrows address={wallet.address!} sign={wallet.sign} onDeedUpdate={() => ownedNFTsRef.current?.load()} />
+            <SuccessfulEscrows address={wallet.address!} />
           </KYCGate>
         )}
       </main>

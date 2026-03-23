@@ -1,7 +1,8 @@
-import { useState } from "react";
-import { nftApi } from "../api/nft";
+import { useState, useEffect } from "react";
+import { nftApi, IncomingOffer } from "../api/nft";
 import { Stepper } from "@shared/components/Stepper";
 import { Copyable } from "@shared/components/Copyable";
+import { SkeletonCard } from "@shared/components/SkeletonCard";
 import { useToast } from "@shared/context/ToastContext";
 import { translateXrplError } from "@shared/utils/xrplErrors";
 import { TX_STEPS } from "../constants";
@@ -14,75 +15,87 @@ interface Props {
 
 export function IncomingOffers({ address, sign, onAccepted }: Props) {
   const { addToast } = useToast();
-  const [offerId, setOfferId] = useState("");
-  const [offerIdError, setOfferIdError] = useState("");
+  const [offers, setOffers] = useState<IncomingOffer[]>([]);
   const [loading, setLoading] = useState(false);
+  const [initialLoad, setInitialLoad] = useState(true);
+  const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const [txStep, setTxStep] = useState(-1);
-  const [txHash, setTxHash] = useState<string | null>(null);
 
-  const validate = () => {
-    if (!offerId.trim()) {
-      setOfferIdError("Offer ID is required.");
-      return false;
+  const load = async () => {
+    setLoading(true);
+    try {
+      const result = await nftApi.incomingOffersForAccount(address);
+      setOffers(result);
+    } catch (_) {
+      // silent
+    } finally {
+      setLoading(false);
+      setInitialLoad(false);
     }
-    setOfferIdError("");
-    return true;
   };
 
-  const handleAccept = async () => {
-    if (!validate()) return;
-    setLoading(true);
+  useEffect(() => { load(); }, [address]);
+
+  const handleAccept = async (offer: IncomingOffer) => {
+    setAcceptingId(offer.offerId);
     setTxStep(0);
-    setTxHash(null);
     try {
-      const unsignedTx = await nftApi.prepareAcceptOffer({ account: address, offerId: offerId.trim() });
+      const unsignedTx = await nftApi.prepareAcceptOffer({ account: address, offerId: offer.offerId });
       setTxStep(1);
       const txBlob = await sign(unsignedTx);
       setTxStep(2);
-      const result = await nftApi.submit(txBlob);
+      await nftApi.submit(txBlob);
       setTxStep(3);
-      setTxHash(result.txHash);
-      setOfferId("");
       addToast("Title deed successfully transferred to your wallet.", "success");
       onAccepted?.();
+      load();
     } catch (err) {
       addToast(translateXrplError(err), "error");
       setTxStep(-1);
     } finally {
-      setLoading(false);
+      setAcceptingId(null);
     }
   };
 
   return (
     <section className="form-card">
-      <h2>Accept Deed Transfer</h2>
-      <p className="info" style={{ fontSize: "0.82rem", lineHeight: 1.6 }}>
-        Paste the NFT offer ID provided by the notary to accept the deed transfer.
-      </p>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <h2>Incoming Deed Offers</h2>
+        <button onClick={load} disabled={loading} className="btn-nft-action">
+          {loading ? "…" : "Refresh"}
+        </button>
+      </div>
 
-      <label>
-        Offer ID
-        <input
-          type="text"
-          placeholder="Paste the notary's NFT offer ID…"
-          value={offerId}
-          onChange={(e) => { setOfferId(e.target.value); setOfferIdError(""); }}
-          disabled={loading}
-        />
-        {offerIdError && <span className="field-error">{offerIdError}</span>}
-      </label>
-
-      {txStep >= 0 && <Stepper steps={TX_STEPS} current={txStep} />}
-
-      {txHash && (
-        <p style={{ fontFamily: "system-ui", fontSize: "0.78rem", color: "#4a7a50", fontWeight: 600 }}>
-          ✓ Deed received — Tx: <Copyable text={txHash} truncate={8} />
-        </p>
+      {loading && initialLoad ? (
+        <>
+          <SkeletonCard />
+          <SkeletonCard />
+        </>
+      ) : offers.length === 0 ? (
+        <div className="empty-state">
+          <p>No incoming deed offers.</p>
+          <p>An offer will appear here once the notary sends you a title deed.</p>
+        </div>
+      ) : (
+        offers.map((offer) => {
+          const isAccepting = acceptingId === offer.offerId;
+          return (
+            <div key={offer.offerId} className="result">
+              <p><strong>NFT ID</strong><br /><Copyable text={offer.nftokenId} truncate={12} /></p>
+              <p><strong>From</strong><br /><Copyable text={offer.owner} truncate={12} /></p>
+              <p><strong>Offer ID</strong><br /><Copyable text={offer.offerId} truncate={12} /></p>
+              {isAccepting && txStep >= 0 && <Stepper steps={TX_STEPS} current={txStep} />}
+              <button
+                className="btn-nft-action"
+                onClick={() => handleAccept(offer)}
+                disabled={acceptingId !== null}
+              >
+                {isAccepting ? "…" : "Accept Deed →"}
+              </button>
+            </div>
+          );
+        })
       )}
-
-      <button onClick={handleAccept} disabled={loading || !offerId.trim()}>
-        {loading ? "Accepting…" : "Accept Deed"}
-      </button>
     </section>
   );
 }
