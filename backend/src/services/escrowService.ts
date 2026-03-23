@@ -118,7 +118,7 @@ function signCustomTx(
 async function autofillBase(
   client: Client,
   account: string,
-): Promise<{ sequence: number; medianFee: number; lastLedger: number }> {
+): Promise<{ sequence: number; medianFee: number; lastLedger: number; balanceXrp: number }> {
   const [accInfo, feeInfo, ledgerInfo] = await Promise.all([
     client.request({
       command: "account_info",
@@ -128,8 +128,10 @@ async function autofillBase(
     client.request({ command: "fee" }),
     client.request({ command: "ledger", ledger_index: "validated" }),
   ]);
+  const accountData = accInfo.result.account_data as { Sequence: number; Balance: string };
   return {
-    sequence: (accInfo.result.account_data as { Sequence: number }).Sequence,
+    sequence: accountData.Sequence,
+    balanceXrp: Number(accountData.Balance) / 1_000_000,
     medianFee: Number(
       (
         (feeInfo.result as Record<string, unknown>)["drops"] as Record<
@@ -170,6 +172,29 @@ async function submitAndCheck(
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+async function waitForTransaction(
+  client: Client,
+  hash: string,
+  timeoutMs = 30000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  let delay = 1000;
+  while (Date.now() < deadline) {
+    await sleep(delay);
+    try {
+      const result = await client.request({ command: "tx", transaction: hash });
+      const res = result.result as Record<string, unknown>;
+      if (res["validated"] === true) return;
+    } catch (_) {
+      // tx not yet known — keep polling
+    }
+    delay = Math.min(delay * 2, 8000);
+  }
+  throw new Error(
+    `Transaction ${hash} not validated on ledger after ${timeoutMs / 1000}s`,
+  );
 }
 
 async function getXrpBalance(client: Client, address: string): Promise<string> {
@@ -236,7 +261,8 @@ async function activateBuyerAccount(
   );
   if (!ok) throw new Error(`Failed to top up buyer account: ${engineResult}`);
   logger.info({ buyerAddress, hash }, "escrow: buyer account topped up");
-  await sleep(3000);
+  // No hash returned from submitAndCheck here; wait one ledger close (~4s) before proceeding.
+  await sleep(4000);
 }
 
 // ─── Prepare unsigned Payment for buyer to sign with Otsu ─────────────────────
@@ -244,7 +270,7 @@ async function activateBuyerAccount(
 export async function preparePayment(
   buyerAddress: string,
   amountXrp: number,
-): Promise<{ tx: Record<string, unknown>; reserveOverheadXrp: number }> {
+): Promise<{ tx: Record<string, unknown>; reserveOverheadXrp: number; buyerBalanceXrp: number }> {
   const issuer = getOracleWallet();
   const wasmBytes = readFileSync(WASM_PATH).length;
   const reserveBlocks = Math.ceil(wasmBytes / 500);
@@ -252,7 +278,7 @@ export async function preparePayment(
   const client = new Client(ENDPOINT);
   await client.connect();
   try {
-    const [{ sequence, medianFee, lastLedger }, serverInfo] = await Promise.all(
+    const [{ sequence, medianFee, lastLedger, balanceXrp: buyerBalanceXrp }, serverInfo] = await Promise.all(
       [
         autofillBase(client, buyerAddress),
         client.request({ command: "server_info" }),
@@ -283,6 +309,7 @@ export async function preparePayment(
         NetworkID: NETWORK_ID,
       },
       reserveOverheadXrp,
+      buyerBalanceXrp,
     };
   } finally {
     await client.disconnect();
@@ -332,11 +359,11 @@ export async function createEscrow(
 
   try {
     // 1 — Submit the buyer's signed Payment (buyer → issuer)
-    const { ok: payOk, engineResult: payResult } = await submitAndCheck(
-      client,
-      paymentTxBlob,
-      "Payment(buyer→issuer)",
-    );
+    const {
+      ok: payOk,
+      engineResult: payResult,
+      hash: payHash,
+    } = await submitAndCheck(client, paymentTxBlob, "Payment(buyer→issuer)");
     if (!payOk) {
       if (
         payResult === "tecUNFUNDED_PAYMENT" ||
@@ -354,7 +381,7 @@ export async function createEscrow(
       }
       throw new Error(`Buyer payment rejected by ledger: ${payResult}`);
     }
-    await sleep(4000);
+    await waitForTransaction(client, payHash!);
 
     // 2 — Create EscrowCreate from issuer (backend-signed, includes FinishFunction WASM)
     const { sequence, medianFee, lastLedger } = await autofillBase(
@@ -392,7 +419,7 @@ export async function createEscrow(
     );
     if (!escrowOk) throw new Error("EscrowCreate rejected by ledger");
 
-    await sleep(5000);
+    await waitForTransaction(client, hash);
     logger.info(
       { escrowSequence: sequence, hash, escrowAccount: issuer.address },
       "escrow: created",
@@ -428,6 +455,7 @@ async function waitForNFTInWallet(
 ): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   const normalizedId = nftId.toUpperCase();
+  let delay = 2000;
   while (Date.now() < deadline) {
     const response = await client.request({
       command: "account_nfts",
@@ -443,7 +471,8 @@ async function waitForNFTInWallet(
       )
     )
       return;
-    await sleep(3000);
+    await sleep(delay);
+    delay = Math.min(delay * 1.5, 10000);
   }
   throw new Error(
     `NFT ${nftId} not found in buyer wallet ${address} after ${timeoutMs / 1000}s — NFT transfer may not be validated yet`,
@@ -542,7 +571,7 @@ export async function finishEscrow(
     const { ok } = await submitAndCheck(client, tx_blob, "EscrowFinish");
     if (!ok) throw new Error("EscrowFinish rejected by ledger");
 
-    await sleep(5000);
+    await waitForTransaction(client, hash);
     logger.info({ hash }, "escrow: finished");
 
     return { hash };
@@ -564,7 +593,8 @@ export async function getPendingEscrows(
       ledger_index: "validated",
     });
     return (response.result.account_objects ?? []) as Record<string, unknown>[];
-  } catch (_) {
+  } catch (err) {
+    logger.error({ err, address }, "escrow: failed to fetch pending escrows");
     return [];
   } finally {
     await client.disconnect();
@@ -655,7 +685,8 @@ export async function getEscrowsByBuyer(
     }
 
     return results;
-  } catch (_) {
+  } catch (err) {
+    logger.error({ err }, "escrow: failed to fetch escrows by buyer");
     return [];
   } finally {
     await client.disconnect();
@@ -731,8 +762,8 @@ export async function getEscrowsBySeller(
           );
         }
       }
-    } catch (_) {
-      /* silently skip enrichment */
+    } catch (err) {
+      logger.warn({ err }, "escrow: could not enrich seller escrows with memo data");
     }
 
     return sellerEscrows.map((e) => ({
@@ -740,7 +771,8 @@ export async function getEscrowsBySeller(
       NftId: nftIdBySeq.get(e["Sequence"] as number) ?? null,
       BuyerAddress: buyerAddrBySeq.get(e["Sequence"] as number) ?? null,
     }));
-  } catch (_) {
+  } catch (err) {
+    logger.error({ err, sellerAddress }, "escrow: failed to fetch escrows by seller");
     return [];
   } finally {
     await client.disconnect();

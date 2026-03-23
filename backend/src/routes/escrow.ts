@@ -3,36 +3,30 @@ import logger from "../logger";
 import {
   createEscrow,
   finishEscrow,
-  getAddressInfo,
   getEscrowsByBuyer,
   getEscrowsBySeller,
-  getPendingEscrows,
   getSuccessfulEscrowsBySeller,
   prepareEscrowCancel,
   preparePayment,
 } from "../services/escrowService";
 
-const router = Router();
+const XRPL_ADDRESS_RE = /^r[1-9A-HJ-NP-Za-km-z]{24,34}$/;
+const NFTOKEN_ID_RE = /^[0-9A-F]{64}$/i;
 
-/**
- * GET /api/escrow/address-info/:address
- * Returns XRP balance for a given XRPL address.
- */
-router.get(
-  "/address-info/:address",
-  async (req: Request, res: Response): Promise<void> => {
-    const { address } = req.params;
-    try {
-      const info = await getAddressInfo(address);
-      res.json(info);
-    } catch (err) {
-      logger.error({ err }, "escrow: get address info failed");
-      res
-        .status(500)
-        .json({ error: err instanceof Error ? err.message : "Unknown error" });
-    }
-  },
-);
+function isValidXrplAddress(v: unknown): v is string {
+  return typeof v === "string" && XRPL_ADDRESS_RE.test(v);
+}
+function isValidNftokenId(v: unknown): v is string {
+  return typeof v === "string" && NFTOKEN_ID_RE.test(v);
+}
+function isPositiveFiniteNumber(v: unknown): v is number {
+  return typeof v === "number" && Number.isFinite(v) && v > 0;
+}
+function isPositiveInteger(v: unknown): v is number {
+  return typeof v === "number" && Number.isInteger(v) && v > 0;
+}
+
+const router = Router();
 
 /**
  * POST /api/escrow/prepare-payment
@@ -51,8 +45,12 @@ router.post(
       res.status(400).json({ error: "Missing required field: buyerAddress" });
       return;
     }
-    if (typeof amountXrp !== "number" || amountXrp <= 0) {
-      res.status(400).json({ error: "Missing or invalid field: amountXrp" });
+    if (!isValidXrplAddress(buyerAddress)) {
+      res.status(400).json({ error: "Invalid XRPL address: buyerAddress" });
+      return;
+    }
+    if (!isPositiveFiniteNumber(amountXrp)) {
+      res.status(400).json({ error: "Missing or invalid field: amountXrp (must be a positive finite number)" });
       return;
     }
     try {
@@ -65,7 +63,7 @@ router.post(
       logger.error({ err }, "escrow: prepare payment failed");
       res
         .status(500)
-        .json({ error: err instanceof Error ? err.message : "Unknown error" });
+        .json({ error: "Internal server error" });
     }
   },
 );
@@ -96,21 +94,28 @@ router.post("/create", async (req: Request, res: Response): Promise<void> => {
     res.status(400).json({ error: "Missing required field: buyerAddress" });
     return;
   }
+  if (!isValidXrplAddress(buyerAddress)) {
+    res.status(400).json({ error: "Invalid XRPL address: buyerAddress" });
+    return;
+  }
   if (!sellerAddress || typeof sellerAddress !== "string") {
     res.status(400).json({ error: "Missing required field: sellerAddress" });
+    return;
+  }
+  if (!isValidXrplAddress(sellerAddress)) {
+    res.status(400).json({ error: "Invalid XRPL address: sellerAddress" });
     return;
   }
   if (!nftId || typeof nftId !== "string") {
     res.status(400).json({ error: "Missing required field: nftId" });
     return;
   }
-  if (typeof amountXrp !== "number" || amountXrp <= 0) {
-    res
-      .status(400)
-      .json({
-        error:
-          "Missing or invalid field: amountXrp (must be a positive number)",
-      });
+  if (!isValidNftokenId(nftId)) {
+    res.status(400).json({ error: "Invalid nftId: must be a 64-char hex string" });
+    return;
+  }
+  if (!isPositiveFiniteNumber(amountXrp)) {
+    res.status(400).json({ error: "Missing or invalid field: amountXrp (must be a positive finite number)" });
     return;
   }
 
@@ -131,7 +136,7 @@ router.post("/create", async (req: Request, res: Response): Promise<void> => {
     logger.error({ err }, "escrow: create failed");
     res
       .status(500)
-      .json({ error: err instanceof Error ? err.message : "Unknown error" });
+      .json({ error: "Internal server error" });
   }
 });
 
@@ -150,20 +155,24 @@ router.post("/finish", async (req: Request, res: Response): Promise<void> => {
     buyerAddress?: unknown;
   };
 
-  if (typeof escrowSequence !== "number") {
-    res
-      .status(400)
-      .json({
-        error: "Missing or invalid field: escrowSequence (must be a number)",
-      });
+  if (!isPositiveInteger(escrowSequence)) {
+    res.status(400).json({ error: "Missing or invalid field: escrowSequence (must be a positive integer)" });
     return;
   }
   if (!nftId || typeof nftId !== "string") {
     res.status(400).json({ error: "Missing required field: nftId" });
     return;
   }
+  if (!isValidNftokenId(nftId)) {
+    res.status(400).json({ error: "Invalid nftId: must be a 64-char hex string" });
+    return;
+  }
   if (!buyerAddress || typeof buyerAddress !== "string") {
     res.status(400).json({ error: "Missing required field: buyerAddress" });
+    return;
+  }
+  if (!isValidXrplAddress(buyerAddress)) {
+    res.status(400).json({ error: "Invalid XRPL address: buyerAddress" });
     return;
   }
 
@@ -178,29 +187,9 @@ router.post("/finish", async (req: Request, res: Response): Promise<void> => {
     logger.error({ err }, "escrow: finish failed");
     res
       .status(500)
-      .json({ error: err instanceof Error ? err.message : "Unknown error" });
+      .json({ error: "Internal server error" });
   }
 });
-
-/**
- * GET /api/escrow/pending/:address
- * Returns pending escrow objects on-chain for the given address.
- */
-router.get(
-  "/pending/:address",
-  async (req: Request, res: Response): Promise<void> => {
-    const { address } = req.params;
-    try {
-      const escrows = await getPendingEscrows(address);
-      res.json({ escrows });
-    } catch (err) {
-      logger.error({ address, err }, "escrow: get pending failed");
-      res
-        .status(500)
-        .json({ error: err instanceof Error ? err.message : "Unknown error" });
-    }
-  },
-);
 
 /**
  * GET /api/escrow/by-buyer/:address
@@ -211,6 +200,10 @@ router.get(
   "/by-buyer/:address",
   async (req: Request, res: Response): Promise<void> => {
     const { address } = req.params;
+    if (!isValidXrplAddress(address)) {
+      res.status(400).json({ error: "Invalid XRPL address" });
+      return;
+    }
     try {
       const escrows = await getEscrowsByBuyer(address);
       res.json({ escrows });
@@ -218,7 +211,7 @@ router.get(
       logger.error({ address, err }, "escrow: get by-buyer failed");
       res
         .status(500)
-        .json({ error: err instanceof Error ? err.message : "Unknown error" });
+        .json({ error: "Internal server error" });
     }
   },
 );
@@ -232,6 +225,10 @@ router.get(
   "/by-seller/:address",
   async (req: Request, res: Response): Promise<void> => {
     const { address } = req.params;
+    if (!isValidXrplAddress(address)) {
+      res.status(400).json({ error: "Invalid XRPL address" });
+      return;
+    }
     try {
       const escrows = await getEscrowsBySeller(address);
       res.json({ escrows });
@@ -239,7 +236,7 @@ router.get(
       logger.error({ address, err }, "escrow: get by-seller failed");
       res
         .status(500)
-        .json({ error: err instanceof Error ? err.message : "Unknown error" });
+        .json({ error: "Internal server error" });
     }
   },
 );
@@ -253,6 +250,10 @@ router.get(
   "/successful-by-seller/:address",
   async (req: Request, res: Response): Promise<void> => {
     const { address } = req.params;
+    if (!isValidXrplAddress(address)) {
+      res.status(400).json({ error: "Invalid XRPL address" });
+      return;
+    }
     try {
       const escrows = await getSuccessfulEscrowsBySeller(address);
       res.json({ escrows });
@@ -260,7 +261,7 @@ router.get(
       logger.error({ address, err }, "escrow: get successful-by-seller failed");
       res
         .status(500)
-        .json({ error: err instanceof Error ? err.message : "Unknown error" });
+        .json({ error: "Internal server error" });
     }
   },
 );
@@ -283,21 +284,23 @@ router.post(
     };
 
     if (!cancellerAddress || typeof cancellerAddress !== "string") {
-      res
-        .status(400)
-        .json({ error: "Missing required field: cancellerAddress" });
+      res.status(400).json({ error: "Missing required field: cancellerAddress" });
+      return;
+    }
+    if (!isValidXrplAddress(cancellerAddress)) {
+      res.status(400).json({ error: "Invalid XRPL address: cancellerAddress" });
       return;
     }
     if (!ownerAddress || typeof ownerAddress !== "string") {
       res.status(400).json({ error: "Missing required field: ownerAddress" });
       return;
     }
-    if (typeof offerSequence !== "number") {
-      res
-        .status(400)
-        .json({
-          error: "Missing or invalid field: offerSequence (must be a number)",
-        });
+    if (!isValidXrplAddress(ownerAddress)) {
+      res.status(400).json({ error: "Invalid XRPL address: ownerAddress" });
+      return;
+    }
+    if (!isPositiveInteger(offerSequence)) {
+      res.status(400).json({ error: "Missing or invalid field: offerSequence (must be a positive integer)" });
       return;
     }
 
@@ -316,7 +319,7 @@ router.post(
       logger.error({ err }, "escrow: prepare cancel failed");
       res
         .status(500)
-        .json({ error: err instanceof Error ? err.message : "Unknown error" });
+        .json({ error: "Internal server error" });
     }
   },
 );

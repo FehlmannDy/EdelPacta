@@ -188,7 +188,7 @@ input[type="file"] {
   letter-spacing: 0;
 }
 
-input:focus { outline: 1px solid #6b1728; border-color: transparent; }
+input:focus-visible { outline: 2px solid #6b1728; outline-offset: 2px; border-color: transparent; }
 
 /* ── Buttons ────────────────────────────────────────────── */
 
@@ -220,7 +220,8 @@ button.btn-secondary:hover:not(:disabled) {
   background: #ede8dc;
   color: #1a120a;
 }
-button:disabled { opacity: 0.35; cursor: not-allowed; }
+button:focus-visible { outline: 2px solid #6b1728; outline-offset: 2px; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
 
 button.btn-nft-action {
   padding: 0.4rem 0.9rem;
@@ -288,6 +289,18 @@ button.btn-nft-action {
   text-transform: uppercase;
   color: #8a7a68;
 }
+
+@keyframes result-enter {
+  0%   { box-shadow: 0 0 0 2px #4a7a50; background: rgba(74, 122, 80, 0.1); }
+  60%  { box-shadow: 0 0 0 2px rgba(74, 122, 80, 0.4); background: rgba(74, 122, 80, 0.04); }
+  100% { box-shadow: 0 0 0 0 transparent; background: #ede8dc; }
+}
+@keyframes result-exit {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(-10px); }
+}
+.result--new      { animation: result-enter 2.5s ease-out forwards; }
+.result--removing { animation: result-exit 0.35s ease-in forwards; pointer-events: none; }
 
 .info {
   font-family: system-ui, sans-serif;
@@ -554,6 +567,7 @@ button.btn-nft-action {
   gap: 0.6rem;
   animation: toast-in 0.2s ease;
 }
+.toast:hover { background: #f0ece3; }
 .toast--success { border-left: 3px solid #4a7a50; }
 .toast--error   { border-left: 3px solid #9b2a2a; }
 .toast--info    { border-left: 3px solid #6b1728; }
@@ -592,6 +606,120 @@ button.btn-nft-action {
 .progress-bar-fill { height: 100%; background: #6b1728; transition: width 0.6s ease; border-radius: 2px; }
 
 
+/* ── Layout helpers ─────────────────────────────────────── */
+
+.row-space-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.btn-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.btn-row--mt {
+  margin-top: 0.25rem;
+}
+
+/* ── Escrow status text ──────────────────────────────────── */
+
+.escrow-status-text {
+  font-family: system-ui, sans-serif;
+  font-size: 0.78rem;
+}
+.escrow-status-text--ok    { color: #4a7a50; }
+.escrow-status-text--muted { color: #8a7a68; }
+
+/* ── Offer status badge ──────────────────────────────────── */
+
+.offer-status-badge {
+  background: #f5f0e8;
+  border-radius: 6px;
+  padding: 0.6rem 0.75rem;
+  margin-top: 0.25rem;
+}
+
+.offer-status-badge__title {
+  font-family: system-ui, sans-serif;
+  font-size: 0.78rem;
+  color: #4a7a50;
+  font-weight: 600;
+  margin: 0;
+}
+
+.offer-status-badge__id {
+  font-family: system-ui, sans-serif;
+  font-size: 0.72rem;
+  color: #8a7a68;
+  margin: 0.25rem 0 0;
+}
+
+/* ── Danger outline button ───────────────────────────────── */
+
+.btn-danger-outline {
+  background: transparent;
+  border: 1px solid #9b2a2a;
+  color: #9b2a2a;
+}
+
+/* ── Burn button wrapper ─────────────────────────────────── */
+
+.burn-btn-wrap {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+/* ── NFT metadata display ────────────────────────────────── */
+
+.nft-uri {
+  font-family: system-ui, sans-serif;
+  font-size: 0.78rem;
+  color: #5a4a3a;
+  word-break: break-all;
+}
+
+.nft-meta {
+  font-family: system-ui, sans-serif;
+  font-size: 0.72rem;
+  color: #8a7a68;
+}
+
+/* ── QR display ──────────────────────────────────────────── */
+
+.qr-center {
+  display: flex;
+  justify-content: center;
+  padding: 0.75rem 0;
+}
+
+.qr-caption {
+  font-family: system-ui, sans-serif;
+  font-size: 0.65rem;
+  color: #8a7a68;
+  margin-top: 0.4rem;
+  text-align: center;
+}
+
+/* ── Modal message ───────────────────────────────────────── */
+
+.modal-message {
+  font-family: system-ui, sans-serif;
+  font-size: 0.88rem;
+  color: #5a4a38;
+  line-height: 1.6;
+}
+
+/* ── Modal confirm danger ────────────────────────────────── */
+
+.btn-confirm--danger {
+  background: #9b2a2a;
+  border-color: #9b2a2a;
+}
+
 /* ── Empty state ────────────────────────────────────────── */
 .empty-state {
   font-family: system-ui, sans-serif; font-size: 0.85rem;
@@ -604,18 +732,6 @@ button.btn-nft-action {
   font-family: system-ui, sans-serif; font-size: 0.72rem;
   color: #9b2a2a; letter-spacing: 0.02em; text-transform: none; font-weight: 400;
 }
-
-/* ── Copyable ───────────────────────────────────────────── */
-.copyable { cursor: pointer; position: relative; display: inline; word-break: break-all; border-bottom: 1px dashed #b8963e; transition: color 0.15s; }
-.copyable:hover { color: #6b1728; }
-.copy-badge {
-  position: absolute; left: 50%; transform: translateX(-50%) translateY(-4px);
-  bottom: calc(100% + 4px); background: #6b1728; color: #faf7f2;
-  font-family: system-ui, sans-serif; font-size: 0.65rem; font-weight: 700;
-  letter-spacing: 0.1em; padding: 0.2rem 0.55rem; white-space: nowrap;
-  pointer-events: none; opacity: 0; transition: opacity 0.15s, transform 0.15s;
-}
-.copy-badge--visible { opacity: 1; transform: translateX(-50%) translateY(0); }
 
 /* ── Responsive ─────────────────────────────────────────── */
 @media (max-width: 600px) {

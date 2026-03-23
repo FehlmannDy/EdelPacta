@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { escrowApi, EscrowObject } from "../api/escrow";
 import { nftApi } from "../api/nft";
 import { Copyable } from "@shared/components/Copyable";
@@ -40,14 +40,14 @@ function getNftId(escrow: EscrowObject): string | null {
   return null;
 }
 
-const XRPL_EPOCH_OFFSET = 946684800;
-
 function isCancellable(cancelAfter: number | undefined): boolean {
   if (!cancelAfter) return true;
-  return Date.now() / 1000 - XRPL_EPOCH_OFFSET >= cancelAfter;
+  return new Date() >= xrplEpochToDate(cancelAfter);
 }
 
 const TX_STEPS = ["Prepare", "Sign", "Submit"];
+
+const escrowKey = (e: EscrowObject) => String(e.Sequence);
 
 interface Props {
   address: string;
@@ -59,25 +59,70 @@ export function PendingEscrows({ address, sign, onResume }: Props) {
   const { addToast } = useToast();
   const [escrows, setEscrows] = useState<EscrowObject[]>([]);
   const [loading, setLoading] = useState(false);
-  const [initialLoad, setInitialLoad] = useState(true);
   const [cancelConfirmSeq, setCancelConfirmSeq] = useState<number | null>(null);
   const [cancellingSeq, setCancellingSeq] = useState<number | null>(null);
   const [cancelTxStep, setCancelTxStep] = useState(-1);
 
-  const load = async () => {
-    setLoading(true);
+  const latestLoadRef = useRef(0);
+  const escrowsRef = useRef<EscrowObject[]>([]);
+  escrowsRef.current = escrows;
+  const cancellingRef = useRef(false);
+  cancellingRef.current = cancellingSeq !== null;
+
+  const [newIds, setNewIds] = useState<Set<string>>(new Set());
+  const [removingIds, setRemovingIds] = useState<Set<string>>(new Set());
+  const [removingEscrows, setRemovingEscrows] = useState<EscrowObject[]>([]);
+
+  const load = useCallback(async (silent = false) => {
+    const requestId = ++latestLoadRef.current;
+    if (!silent) { setLoading(true); }
     try {
       const { escrows: list } = await escrowApi.byBuyer(address);
-      setEscrows(list as EscrowObject[]);
+      const result = list as EscrowObject[];
+      if (requestId !== latestLoadRef.current) return;
+      if (silent) {
+        const prev = escrowsRef.current;
+        const prevIds = new Set(prev.map(escrowKey));
+        const nextIds = new Set(result.map(escrowKey));
+        const added = result.filter(e => !prevIds.has(escrowKey(e)));
+        const removed = prev.filter(e => !nextIds.has(escrowKey(e)));
+        if (removed.length > 0) {
+          setRemovingIds(new Set(removed.map(escrowKey)));
+          setRemovingEscrows(removed);
+          setTimeout(() => {
+            if (requestId !== latestLoadRef.current) return;
+            setEscrows(result);
+            setRemovingIds(new Set());
+            setRemovingEscrows([]);
+          }, 350);
+        } else {
+          setEscrows(result);
+        }
+        if (added.length > 0) {
+          setNewIds(new Set(added.map(escrowKey)));
+          setTimeout(() => setNewIds(new Set()), 2500);
+        }
+      } else {
+        setEscrows(result);
+        setNewIds(new Set());
+        setRemovingIds(new Set());
+        setRemovingEscrows([]);
+      }
     } catch (_) {
-      // silent
+      if (requestId !== latestLoadRef.current) return;
     } finally {
-      setLoading(false);
-      setInitialLoad(false);
+      if (requestId !== latestLoadRef.current) return;
+      if (!silent) setLoading(false);
     }
-  };
+  }, [address]);
 
   const handleCancel = async (escrow: EscrowObject) => {
+    // BUYER-010: re-validate at call time — the render-time check may be stale
+    if (!isCancellable(escrow.CancelAfter)) {
+      addToast("This escrow is not yet cancellable.", "error");
+      setCancelConfirmSeq(null);
+      return;
+    }
     setCancelConfirmSeq(null);
     setCancellingSeq(escrow.Sequence);
     setCancelTxStep(0);
@@ -93,7 +138,7 @@ export function PendingEscrows({ address, sign, onResume }: Props) {
       await nftApi.submit(txBlob);
       setCancelTxStep(3);
       addToast("Escrow cancelled. Funds returned to escrow account.", "success");
-      load();
+      load(true);
     } catch (err) {
       addToast(translateXrplError(err), "error");
       setCancelTxStep(-1);
@@ -102,14 +147,28 @@ export function PendingEscrows({ address, sign, onResume }: Props) {
     }
   };
 
-  useEffect(() => { load(); }, [address]);
+  useEffect(() => {
+    load(false);
+    let id: ReturnType<typeof setInterval>;
+    const jitter = setTimeout(() => {
+      id = setInterval(() => {
+        if (!cancellingRef.current) load(true);
+      }, 15_000);
+    }, Math.random() * 5_000);
+    return () => { clearTimeout(jitter); clearInterval(id); };
+  }, [load]);
+
+  const displayEscrows = [
+    ...escrows,
+    ...removingEscrows.filter(re => !escrows.some(e => e.Sequence === re.Sequence)),
+  ];
 
   return (
     <section className="form-card">
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <h2>Active Smart Escrows</h2>
+      <div className="row-space-between">
+        <h2>Active Smart Escrows ({escrows.length})</h2>
         <button
-          onClick={load}
+          onClick={() => load(false)}
           disabled={loading}
           className="btn-secondary"
           style={{ fontSize: "0.65rem", padding: "0.25rem 0.6rem" }}
@@ -118,22 +177,27 @@ export function PendingEscrows({ address, sign, onResume }: Props) {
         </button>
       </div>
 
-      {loading && initialLoad ? (
+      {loading ? (
         <>
           <SkeletonCard />
           <SkeletonCard />
         </>
-      ) : escrows.length === 0 ? (
+      ) : displayEscrows.length === 0 ? (
         <div className="empty-state">
           <span>No active escrows on-chain.</span>
         </div>
       ) : (
-        escrows.map((e) => {
+        displayEscrows.map((e) => {
           const nftId = e.NftId ?? getNftId(e);
           const cancellable = isCancellable(e.CancelAfter);
           const isCancelling = cancellingSeq === e.Sequence;
+          const isNew = newIds.has(escrowKey(e));
+          const isRemoving = removingIds.has(escrowKey(e));
           return (
-            <div key={e.Sequence} className="result">
+            <div
+              key={e.Sequence}
+              className={`result${isNew ? " result--new" : ""}${isRemoving ? " result--removing" : ""}`}
+            >
               <Modal
                 open={cancelConfirmSeq === e.Sequence}
                 title="Cancel Escrow"
@@ -148,14 +212,14 @@ export function PendingEscrows({ address, sign, onResume }: Props) {
               <p><strong>Amount Locked</strong><br />{dropsToXrp(e.Amount)} — Sequence #{e.Sequence}</p>
               {nftId && <p><strong>NFT ID</strong><br /><Copyable text={nftId} truncate={12} /></p>}
               {e.CancelAfter && (
-                <p style={{ fontFamily: "system-ui", fontSize: "0.78rem", color: cancellable ? "#4a7a50" : "#8a7a68" }}>
+                <p className={`escrow-status-text ${cancellable ? "escrow-status-text--ok" : "escrow-status-text--muted"}`}>
                   {cancellable ? "✓ Cancellable now" : `Cancellable after ${formatExpiry(e.CancelAfter)}`}
                 </p>
               )}
               {isCancelling && cancelTxStep >= 0 && (
                 <Stepper steps={TX_STEPS} current={cancelTxStep} />
               )}
-              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+              <div className="btn-row">
                 {onResume && (
                   <button
                     className="btn-secondary"
@@ -167,8 +231,8 @@ export function PendingEscrows({ address, sign, onResume }: Props) {
                   </button>
                 )}
                 <button
-                  className="btn-secondary"
-                  style={{ fontSize: "0.75rem", background: "transparent", border: "1px solid #9b2a2a", color: cancellable ? "#9b2a2a" : undefined }}
+                  className="btn-secondary btn-danger-outline"
+                  style={{ fontSize: "0.75rem", color: cancellable ? "#9b2a2a" : undefined }}
                   onClick={() => setCancelConfirmSeq(e.Sequence)}
                   disabled={!cancellable || cancellingSeq !== null}
                 >

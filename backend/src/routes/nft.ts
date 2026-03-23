@@ -4,7 +4,6 @@ import {
   mintNFT,
   burnNFT,
   cancelNFTOffer,
-  NFTokenMintFlags,
   createTransferOffer,
   prepareBurnTx,
   prepareTransferOfferTx,
@@ -17,6 +16,16 @@ import {
   getOutgoingOffers,
   getOfferDetails,
 } from "../services/xrplService";
+
+const XRPL_ADDRESS_RE = /^r[1-9A-HJ-NP-Za-km-z]{24,34}$/;
+const NFTOKEN_ID_RE = /^[0-9A-F]{64}$/i;
+
+function isValidXrplAddress(v: unknown): v is string {
+  return typeof v === "string" && XRPL_ADDRESS_RE.test(v);
+}
+function isValidNftokenId(v: unknown): v is string {
+  return typeof v === "string" && NFTOKEN_ID_RE.test(v);
+}
 
 const router = Router();
 
@@ -36,8 +45,16 @@ router.post("/prepare/burn", async (req: Request, res: Response): Promise<void> 
     res.status(400).json({ error: "Missing required field: account" });
     return;
   }
+  if (!isValidXrplAddress(account)) {
+    res.status(400).json({ error: "Invalid XRPL address: account" });
+    return;
+  }
   if (!nftokenId || typeof nftokenId !== "string") {
     res.status(400).json({ error: "Missing required field: nftokenId" });
+    return;
+  }
+  if (!isValidNftokenId(nftokenId)) {
+    res.status(400).json({ error: "Invalid nftokenId: must be a 64-char hex string" });
     return;
   }
 
@@ -48,7 +65,7 @@ router.post("/prepare/burn", async (req: Request, res: Response): Promise<void> 
     res.json(tx);
   } catch (err) {
     logger.error({ account, nftokenId, err }, "nft: prepare burn tx failed");
-    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -64,8 +81,20 @@ router.post("/prepare/transfer-offer", async (req: Request, res: Response): Prom
     res.status(400).json({ error: "Missing required field: account" });
     return;
   }
+  if (!isValidXrplAddress(account)) {
+    res.status(400).json({ error: "Invalid XRPL address: account" });
+    return;
+  }
   if (!nftokenId || typeof nftokenId !== "string") {
     res.status(400).json({ error: "Missing required field: nftokenId" });
+    return;
+  }
+  if (!isValidNftokenId(nftokenId)) {
+    res.status(400).json({ error: "Invalid nftokenId: must be a 64-char hex string" });
+    return;
+  }
+  if (destination !== undefined && !isValidXrplAddress(destination)) {
+    res.status(400).json({ error: "Invalid XRPL address: destination" });
     return;
   }
 
@@ -76,7 +105,7 @@ router.post("/prepare/transfer-offer", async (req: Request, res: Response): Prom
     res.json(tx);
   } catch (err) {
     logger.error({ account, nftokenId, err }, "nft: prepare transfer offer tx failed");
-    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -92,6 +121,10 @@ router.post("/prepare/accept-offer", async (req: Request, res: Response): Promis
     res.status(400).json({ error: "Missing required field: account" });
     return;
   }
+  if (!isValidXrplAddress(account)) {
+    res.status(400).json({ error: "Invalid XRPL address: account" });
+    return;
+  }
   if (!offerId || typeof offerId !== "string") {
     res.status(400).json({ error: "Missing required field: offerId" });
     return;
@@ -104,7 +137,7 @@ router.post("/prepare/accept-offer", async (req: Request, res: Response): Promis
     res.json(tx);
   } catch (err) {
     logger.error({ account, offerId, err }, "nft: prepare accept offer tx failed");
-    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -120,6 +153,10 @@ router.post("/prepare/cancel-offer", async (req: Request, res: Response): Promis
     res.status(400).json({ error: "Missing required field: account" });
     return;
   }
+  if (!isValidXrplAddress(account)) {
+    res.status(400).json({ error: "Invalid XRPL address: account" });
+    return;
+  }
   if (!Array.isArray(offerIds) || offerIds.length === 0 || offerIds.some((id) => typeof id !== "string")) {
     res.status(400).json({ error: "Missing or invalid field: offerIds (must be a non-empty array of strings)" });
     return;
@@ -132,7 +169,7 @@ router.post("/prepare/cancel-offer", async (req: Request, res: Response): Promis
     res.json(tx);
   } catch (err) {
     logger.error({ account, offerIds, err }, "nft: prepare cancel offer tx failed");
-    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -157,7 +194,7 @@ router.post("/submit", async (req: Request, res: Response): Promise<void> => {
     res.json(result);
   } catch (err) {
     logger.error({ err }, "nft: submit signed tx failed");
-    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -169,6 +206,15 @@ router.get("/offers/incoming/:address/:nftokenId", async (req: Request, res: Res
   const { address, nftokenId } = req.params;
   const networkUrl = req.query["networkUrl"] as string | undefined;
 
+  if (!isValidXrplAddress(address)) {
+    res.status(400).json({ error: "Invalid XRPL address" });
+    return;
+  }
+  if (!isValidNftokenId(nftokenId)) {
+    res.status(400).json({ error: "Invalid nftokenId: must be a 64-char hex string" });
+    return;
+  }
+
   try {
     logger.info({ address, nftokenId }, "nft: fetching incoming offers");
     const offers = await getIncomingOffers(address, nftokenId, networkUrl);
@@ -176,7 +222,7 @@ router.get("/offers/incoming/:address/:nftokenId", async (req: Request, res: Res
     res.json({ offers });
   } catch (err) {
     logger.error({ address, nftokenId, err }, "nft: fetch incoming offers failed");
-    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -187,6 +233,11 @@ router.get("/offers/incoming/:address/:nftokenId", async (req: Request, res: Res
 router.get("/offers/incoming-for-account/:address", async (req: Request, res: Response): Promise<void> => {
   const { address } = req.params;
   const networkUrl = req.query["networkUrl"] as string | undefined;
+
+  if (!isValidXrplAddress(address)) {
+    res.status(400).json({ error: "Invalid XRPL address" });
+    return;
+  }
 
   const minterAddress = process.env.ISSUER_ADDRESS;
   if (!minterAddress) {
@@ -201,7 +252,7 @@ router.get("/offers/incoming-for-account/:address", async (req: Request, res: Re
     res.json({ offers });
   } catch (err) {
     logger.error({ address, err }, "nft: fetch incoming offers for account failed");
-    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -213,6 +264,11 @@ router.get("/list/:address", async (req: Request, res: Response): Promise<void> 
   const { address } = req.params;
   const networkUrl = req.query["networkUrl"] as string | undefined;
 
+  if (!isValidXrplAddress(address)) {
+    res.status(400).json({ error: "Invalid XRPL address" });
+    return;
+  }
+
   try {
     logger.info({ address }, "nft: listing account NFTs");
     const nfts = await getAccountNFTs(address, networkUrl);
@@ -220,7 +276,7 @@ router.get("/list/:address", async (req: Request, res: Response): Promise<void> 
     res.json({ account: address, nfts, count: nfts.length });
   } catch (err) {
     logger.error({ address, err }, "nft: list account NFTs failed");
-    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -232,6 +288,11 @@ router.get("/offers/outgoing/:address", async (req: Request, res: Response): Pro
   const { address } = req.params;
   const networkUrl = req.query["networkUrl"] as string | undefined;
 
+  if (!isValidXrplAddress(address)) {
+    res.status(400).json({ error: "Invalid XRPL address" });
+    return;
+  }
+
   try {
     logger.info({ address }, "nft: fetching outgoing offers");
     const offers = await getOutgoingOffers(address, networkUrl);
@@ -239,7 +300,7 @@ router.get("/offers/outgoing/:address", async (req: Request, res: Response): Pro
     res.json({ offers });
   } catch (err) {
     logger.error({ address, err }, "nft: fetch outgoing offers failed");
-    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -255,17 +316,8 @@ router.get("/offer/:offerId", async (req: Request, res: Response): Promise<void>
     res.json(details);
   } catch (err) {
     logger.error({ offerId, err }, "nft: get offer details failed");
-    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+    res.status(500).json({ error: "Internal server error" });
   }
-});
-
-/**
- * GET /api/nft/flags
- *
- * Returns the available NFTokenMint flag values for reference.
- */
-router.get("/flags", (_req: Request, res: Response): void => {
-  res.json(NFTokenMintFlags);
 });
 
 // ---------------------------------------------------------------------------
@@ -301,7 +353,7 @@ router.post("/issuer-mint", async (req: Request, res: Response): Promise<void> =
     res.json(result);
   } catch (err) {
     logger.error({ err }, "nft: issuer mint failed");
-    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -318,6 +370,14 @@ router.post("/issuer-transfer-offer", async (req: Request, res: Response): Promi
     res.status(400).json({ error: "Missing required field: nftokenId" });
     return;
   }
+  if (!isValidNftokenId(nftokenId)) {
+    res.status(400).json({ error: "Invalid nftokenId: must be a 64-char hex string" });
+    return;
+  }
+  if (destination !== undefined && !isValidXrplAddress(destination)) {
+    res.status(400).json({ error: "Invalid XRPL address: destination" });
+    return;
+  }
   try {
     logger.info({ nftokenId, destination }, "nft: issuer creating transfer offer");
     const result = await createTransferOffer({ seed, nftokenId, destination });
@@ -325,7 +385,7 @@ router.post("/issuer-transfer-offer", async (req: Request, res: Response): Promi
     res.json(result);
   } catch (err) {
     logger.error({ err }, "nft: issuer transfer offer failed");
-    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -349,7 +409,7 @@ router.post("/issuer-cancel-offer", async (req: Request, res: Response): Promise
     res.json(result);
   } catch (err) {
     logger.error({ err }, "nft: issuer cancel offer failed");
-    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -366,6 +426,10 @@ router.post("/issuer-burn", async (req: Request, res: Response): Promise<void> =
     res.status(400).json({ error: "Missing required field: nftokenId" });
     return;
   }
+  if (!isValidNftokenId(nftokenId)) {
+    res.status(400).json({ error: "Invalid nftokenId: must be a 64-char hex string" });
+    return;
+  }
   try {
     logger.info({ nftokenId }, "nft: issuer burning");
     const result = await burnNFT({ seed, nftokenId });
@@ -373,7 +437,7 @@ router.post("/issuer-burn", async (req: Request, res: Response): Promise<void> =
     res.json(result);
   } catch (err) {
     logger.error({ err }, "nft: issuer burn failed");
-    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 

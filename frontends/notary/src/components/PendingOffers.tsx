@@ -1,4 +1,4 @@
-import { useEffect, useImperativeHandle, forwardRef, useState } from "react";
+import { useEffect, useImperativeHandle, forwardRef, useState, useCallback, useRef } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { nftApi, PendingOffer } from "../api/nft";
 import { nftLog } from "@shared/logger";
@@ -20,6 +20,16 @@ export const PendingOffers = forwardRef<PendingOffersHandle, object>(function Pe
   const [qrId, setQrId] = useState<string | null>(null);
   const [cancelConfirmId, setCancelConfirmId] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [newIds, setNewIds] = useState<Set<string>>(new Set());
+  const [removingIds, setRemovingIds] = useState<Set<string>>(new Set());
+  const [removingOffers, setRemovingOffers] = useState<PendingOffer[]>([]);
+
+  const latestLoadRef = useRef(0);
+  const offersRef = useRef<PendingOffer[]>([]);
+  const cancellingRef = useRef<string | null>(null);
+
+  offersRef.current = offers;
+  cancellingRef.current = cancellingId;
 
   useEffect(() => {
     fetch("/api/kyc/issuer")
@@ -28,21 +38,53 @@ export const PendingOffers = forwardRef<PendingOffersHandle, object>(function Pe
       .catch(() => {});
   }, []);
 
-  const load = async () => {
+  const load = useCallback(async (silent = false) => {
     if (!issuerAddress) return;
-    setLoading(true);
-    setError(null);
+    const requestId = ++latestLoadRef.current;
+    if (!silent) { setLoading(true); setError(null); }
     try {
       nftLog.info("loading outgoing offers", { issuerAddress });
       const result = await nftApi.outgoingOffers(issuerAddress);
-      setOffers(result);
+      if (requestId !== latestLoadRef.current) return;
+      if (silent) {
+        const prev = offersRef.current;
+        const prevIds = new Set(prev.map((o) => o.offerId));
+        const nextIds = new Set(result.map((o) => o.offerId));
+        const added = result.filter((o) => !prevIds.has(o.offerId));
+        const removed = prev.filter((o) => !nextIds.has(o.offerId));
+        if (removed.length > 0) {
+          setRemovingIds(new Set(removed.map((o) => o.offerId)));
+          setRemovingOffers(removed);
+          setTimeout(() => {
+            if (requestId !== latestLoadRef.current) return;
+            setOffers(result);
+            setRemovingIds(new Set());
+            setRemovingOffers([]);
+          }, 350);
+        } else {
+          setOffers(result);
+        }
+        if (added.length > 0) {
+          setNewIds(new Set(added.map((o) => o.offerId)));
+          setTimeout(() => setNewIds(new Set()), 2500);
+        }
+      } else {
+        setOffers(result);
+        setNewIds(new Set());
+        setRemovingIds(new Set());
+        setRemovingOffers([]);
+      }
     } catch (err) {
-      nftLog.error("failed to load outgoing offers", { err });
-      setError(translateXrplError(err));
+      if (requestId !== latestLoadRef.current) return;
+      if (!silent) {
+        nftLog.error("failed to load outgoing offers", { err });
+        setError(translateXrplError(err));
+      }
     } finally {
-      setLoading(false);
+      if (requestId !== latestLoadRef.current) return;
+      if (!silent) setLoading(false);
     }
-  };
+  }, [issuerAddress]);
 
   const handleCancel = async (offer: PendingOffer) => {
     setCancelConfirmId(null);
@@ -53,7 +95,7 @@ export const PendingOffers = forwardRef<PendingOffersHandle, object>(function Pe
       nftLog.info("burning deed", { nftokenId: offer.nftokenId });
       await nftApi.issuerBurn({ nftokenId: offer.nftokenId });
       addToast("Transfer offer cancelled and deed burned.", "success");
-      load();
+      load(true);
     } catch (err) {
       nftLog.error("cancel/burn failed", { err });
       addToast(translateXrplError(err), "error");
@@ -62,16 +104,29 @@ export const PendingOffers = forwardRef<PendingOffersHandle, object>(function Pe
     }
   };
 
-  useImperativeHandle(ref, () => ({ load }));
-  useEffect(() => { load(); }, [issuerAddress]);
+  useImperativeHandle(ref, () => ({ load: () => load(true) }), [load]);
 
-  const sellOffers = offers.filter((o) => o.isSellOffer);
+  useEffect(() => {
+    load(false);
+    let id: ReturnType<typeof setInterval>;
+    const jitter = setTimeout(() => {
+      id = setInterval(() => { if (!cancellingRef.current) load(true); }, 15_000);
+    }, Math.random() * 5_000);
+    return () => { clearTimeout(jitter); clearInterval(id); };
+  }, [load]);
+
+  const displayOffers = [
+    ...offers,
+    ...removingOffers.filter((ro) => !offers.some((o) => o.offerId === ro.offerId)),
+  ];
+  const displaySellOffers = displayOffers.filter((o) => o.isSellOffer);
+  const sellOffersCount = offers.filter((o) => o.isSellOffer).length;
 
   return (
     <section className="form-card">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h2>Pending Transfer Offers ({sellOffers.length})</h2>
-        <button onClick={load} disabled={loading} style={{ padding: "0.3rem 0.8rem", fontSize: "0.68rem" }}>
+        <h2>Pending Transfer Offers ({sellOffersCount})</h2>
+        <button onClick={() => load(false)} disabled={loading} style={{ padding: "0.3rem 0.8rem", fontSize: "0.68rem" }}>
           {loading ? "…" : "Refresh"}
         </button>
       </div>
@@ -83,15 +138,22 @@ export const PendingOffers = forwardRef<PendingOffersHandle, object>(function Pe
         </>
       )}
       {!loading && error && <p className="error">{error}</p>}
-      {!loading && sellOffers.length === 0 && !error && (
+      {!loading && displaySellOffers.length === 0 && !error && (
         <div className="empty-state">
           <p>No pending transfer offers.</p>
           <p>Select a deed above and click Transfer to create one.</p>
         </div>
       )}
 
-      {sellOffers.map((offer) => (
-        <div key={offer.offerId} className="result">
+      {displaySellOffers.map((offer) => (
+        <div
+          key={offer.offerId}
+          className={[
+            "result",
+            newIds.has(offer.offerId) ? "result--new" : "",
+            removingIds.has(offer.offerId) ? "result--removing" : "",
+          ].filter(Boolean).join(" ")}
+        >
           <Modal
             open={cancelConfirmId === offer.offerId}
             title="Cancel Offer & Burn Deed"

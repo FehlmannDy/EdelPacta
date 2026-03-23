@@ -54,6 +54,10 @@ export interface OfferDetails {
   destination: string | null;
 }
 
+// Generic XRPL transaction submitter — used by NFT, escrow, and KYC flows alike.
+export const submitTx = (txBlob: string) =>
+  post<SubmitResult>("/submit", { txBlob });
+
 export const nftApi = {
   prepareTransferOffer: (params: {
     account: string;
@@ -70,12 +74,15 @@ export const nftApi = {
   prepareBurn: (params: { account: string; nftokenId: string }) =>
     post<PreparedTx>("/prepare/burn", params),
 
-  submit: (txBlob: string) =>
-    post<SubmitResult>("/submit", { txBlob }),
+  submit: submitTx,
 
   list: (address: string) =>
     fetch(`/api/nft/list/${address}`)
-      .then((r) => r.json() as Promise<NFTListResult>),
+      .then(async (r) => {
+        const data = await r.json() as NFTListResult & { error?: string };
+        if (!r.ok) throw new Error(data.error ?? "Failed to fetch NFTs");
+        return data as NFTListResult;
+      }),
 
   incomingOffers: (address: string, nftokenId: string) =>
     fetch(`/api/nft/offers/incoming/${address}/${nftokenId}`)

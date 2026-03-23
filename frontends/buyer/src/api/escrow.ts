@@ -1,6 +1,8 @@
 import { makeApiClient } from "@shared/utils/apiClient";
 
-const { post, get } = makeApiClient(`${import.meta.env.VITE_API_BASE_URL ?? ""}/api/escrow`);
+const { post, get } = makeApiClient(
+  `${import.meta.env.VITE_API_BASE_URL ?? ""}/api/escrow`,
+);
 
 export interface CreateEscrowResult {
   escrowSequence: number;
@@ -12,11 +14,6 @@ export interface CreateEscrowResult {
 
 export interface FinishEscrowResult {
   hash: string;
-}
-
-export interface AcceptNftResult {
-  txHash: string;
-  account: string;
 }
 
 export interface EscrowObject {
@@ -32,7 +29,10 @@ export interface EscrowObject {
 
 export const escrowApi = {
   preparePayment: (params: { buyerAddress: string; amountXrp: number }) =>
-    post<{ tx: Record<string, unknown>; reserveOverheadXrp: number }>("/prepare-payment", params),
+    post<{ tx: Record<string, unknown>; reserveOverheadXrp: number; buyerBalanceXrp: number }>(
+      "/prepare-payment",
+      params,
+    ),
 
   create: (params: {
     paymentTxBlob: string;
@@ -42,12 +42,18 @@ export const escrowApi = {
     amountXrp: number;
   }) => post<CreateEscrowResult>("/create", params),
 
-  finish: (params: { escrowSequence: number; nftId: string; buyerAddress: string }) =>
-    post<FinishEscrowResult>("/finish", params),
+  finish: (params: {
+    escrowSequence: number;
+    nftId: string;
+    buyerAddress: string;
+  }) => post<FinishEscrowResult>("/finish", params),
 
   byBuyer: (address: string) =>
     get<{ escrows: EscrowObject[] }>(`/by-buyer/${address}`),
 
-  prepareCancel: (params: { cancellerAddress: string; ownerAddress: string; offerSequence: number }) =>
-    post<Record<string, unknown>>("/prepare-cancel", params),
+  prepareCancel: (params: {
+    cancellerAddress: string;
+    ownerAddress: string;
+    offerSequence: number;
+  }) => post<Record<string, unknown>>("/prepare-cancel", params),
 };

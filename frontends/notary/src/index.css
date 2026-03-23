@@ -188,7 +188,7 @@ input[type="file"] {
   letter-spacing: 0;
 }
 
-input:focus { outline: 1px solid #6b1728; border-color: transparent; }
+input:focus-visible { outline: 2px solid #6b1728; outline-offset: 2px; border-color: transparent; }
 
 /* ── Buttons ────────────────────────────────────────────── */
 
@@ -220,7 +220,8 @@ button.btn-secondary:hover:not(:disabled) {
   background: #ede8dc;
   color: #1a120a;
 }
-button:disabled { opacity: 0.35; cursor: not-allowed; }
+button:focus-visible { outline: 2px solid #6b1728; outline-offset: 2px; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ── NFT card action buttons (Transfer / Burn / Refresh) ── */
 button.btn-nft-action {
@@ -251,6 +252,18 @@ button.btn-nft-action {
   text-transform: uppercase;
   color: #8a7a68;
 }
+
+@keyframes result-enter {
+  0%   { box-shadow: 0 0 0 2px #4a7a50; background: rgba(74, 122, 80, 0.1); }
+  60%  { box-shadow: 0 0 0 2px rgba(74, 122, 80, 0.4); background: rgba(74, 122, 80, 0.04); }
+  100% { box-shadow: 0 0 0 0 transparent; background: #ede8dc; }
+}
+@keyframes result-exit {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(-10px); }
+}
+.result--new      { animation: result-enter 2.5s ease-out forwards; }
+.result--removing { animation: result-exit 0.35s ease-in forwards; pointer-events: none; }
 
 .info {
   font-family: system-ui, sans-serif;
@@ -489,6 +502,7 @@ button.btn-nft-action {
   gap: 0.6rem;
   animation: toast-in 0.2s ease;
 }
+.toast:hover { background: #f0ece3; }
 .toast--success { border-left: 3px solid #4a7a50; }
 .toast--error   { border-left: 3px solid #9b2a2a; }
 .toast--info    { border-left: 3px solid #6b1728; }

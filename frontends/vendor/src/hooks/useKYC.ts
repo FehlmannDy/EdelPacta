@@ -60,24 +60,36 @@ export function useKYC(
 
     setState((s) => ({ ...s, streamState: label }));
 
-    const response = await fetch(`/api/kyc/stream/${verificationId}`);
-    if (!response.ok) throw new Error(`Stream request failed: ${response.statusText}`);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5 * 60 * 1000);
+    try {
+      const response = await fetch(`/api/kyc/stream/${verificationId}`, { signal: controller.signal });
+      if (!response.ok) throw new Error(`Stream request failed: ${response.statusText}`);
 
-    for await (const event of readSSEStream(response)) {
-      const eventState = event["state"] as string | undefined;
-      kycLog.debug("SSE event", { state: eventState, step });
+      for await (const event of readSSEStream(response)) {
+        const eventState = event["state"] as string | undefined;
+        kycLog.debug("SSE event", { state: eventState, step });
 
-      if (eventState === "PENDING") {
-        setState((s) => ({ ...s, streamState: label }));
-      } else if (eventState === "SUCCESS") {
-        kycLog.info("verification SUCCESS", { step });
-        setState((s) => ({ ...s, step: "issuing", error: null, streamState: null, verificationStep: step }));
-        await kycApi.issue(addr, step);
-        await acceptCredentialStep(addr, step);
-        return;
-      } else if (eventState === "ERROR") {
-        throw new Error((event["error"] as string) ?? "Verification failed");
+        if (eventState === "PENDING") {
+          setState((s) => ({ ...s, streamState: label }));
+        } else if (eventState === "SUCCESS") {
+          kycLog.info("verification SUCCESS", { step });
+          setState((s) => ({ ...s, step: "issuing", error: null, streamState: null, verificationStep: step }));
+          await kycApi.issue(addr, step);
+          await acceptCredentialStep(addr, step);
+          return;
+        } else if (eventState === "ERROR") {
+          throw new Error((event["error"] as string) ?? "Verification failed");
+        }
       }
+      throw new Error("Verification session ended without a result. Please try again.");
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        throw new Error("Verification timed out. Please scan the QR code again.");
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeoutId);
     }
   }, [acceptCredentialStep]);
 

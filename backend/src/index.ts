@@ -1,9 +1,49 @@
 import express, { Request, Response, NextFunction } from "express";
 import nftRouter from "./routes/nft";
 import kycRouter from "./routes/kyc";
-import ipfsRouter from "./routes/ipfs";
 import escrowRouter from "./routes/escrow";
 import logger from "./logger";
+
+// ── Startup validation ────────────────────────────────────
+function validateEnvironment() {
+  const required: [string, string | undefined][] = [
+    ["ISSUER_ADDRESS", process.env.ISSUER_ADDRESS],
+    ["BETAID_ISSUER_DID", process.env.BETAID_ISSUER_DID],
+    ["ISSUER_DID", process.env.ISSUER_DID],
+    // ORACLE_SEED may fall back to ISSUER_SEED; at least one must be present
+    ["ORACLE_SEED or ISSUER_SEED", process.env.ORACLE_SEED ?? process.env.ISSUER_SEED],
+  ];
+  const missing = required.filter(([, v]) => !v).map(([k]) => k);
+  if (missing.length > 0) {
+    logger.error({ missing }, "missing required environment variables — server cannot start");
+    process.exit(1);
+  }
+}
+
+validateEnvironment();
+
+// ── Simple in-memory rate limiter ─────────────────────────
+function createRateLimiter(windowMs: number, max: number) {
+  const store = new Map<string, { count: number; resetAt: number }>();
+  return (req: Request, res: Response, next: NextFunction) => {
+    const ip = req.ip ?? req.socket.remoteAddress ?? "unknown";
+    const now = Date.now();
+    let entry = store.get(ip);
+    if (!entry || now > entry.resetAt) {
+      entry = { count: 0, resetAt: now + windowMs };
+      store.set(ip, entry);
+    }
+    entry.count++;
+    if (entry.count > max) {
+      res.status(429).json({ error: "Too many requests" });
+      return;
+    }
+    next();
+  };
+}
+
+// 300 req/min globally — protects against DoS without affecting legitimate polling
+const globalLimiter = createRateLimiter(60_000, 300);
 
 const app = express();
 const PORT = process.env.PORT ?? 8080;
@@ -24,7 +64,8 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
-app.use(express.json());
+app.use(express.json({ limit: "1mb" }));
+app.use(globalLimiter);
 
 // Request logging
 app.use((req: Request, res: Response, next: NextFunction) => {
@@ -43,7 +84,6 @@ app.get("/health", (_req, res) => {
 
 app.use("/api/nft", nftRouter);
 app.use("/api/kyc", kycRouter);
-app.use("/api/ipfs", ipfsRouter);
 app.use("/api/escrow", escrowRouter);
 
 // Unhandled error middleware

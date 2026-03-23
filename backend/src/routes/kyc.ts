@@ -12,6 +12,20 @@ import {
   CREDENTIAL_TYPE_TAX_HEX,
 } from "../services/kycService";
 
+const XRPL_ADDRESS_RE = /^r[1-9A-HJ-NP-Za-km-z]{24,34}$/;
+const VALID_ROLES = ["vendor", "buyer"];
+const VALID_STEPS = ["identity", "tax"];
+
+function isValidXrplAddress(v: unknown): v is string {
+  return typeof v === "string" && XRPL_ADDRESS_RE.test(v);
+}
+function isValidRole(v: unknown): boolean {
+  return v === undefined || (typeof v === "string" && VALID_ROLES.includes(v));
+}
+function isValidStep(v: unknown): boolean {
+  return v === undefined || (typeof v === "string" && VALID_STEPS.includes(v));
+}
+
 function credentialTypesForRole(role?: string, step?: string): string[] {
   if (role === "vendor") {
     if (step === "identity") return [CREDENTIAL_TYPE_HEX];
@@ -31,7 +45,7 @@ router.get("/issuer", (_req: Request, res: Response): void => {
   try {
     res.json({ issuer: getIssuerAddress() });
   } catch (err) {
-    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -41,14 +55,28 @@ router.get("/issuer", (_req: Request, res: Response): void => {
  */
 router.get("/status/:address", async (req: Request, res: Response): Promise<void> => {
   const { address } = req.params;
-  const types = credentialTypesForRole(req.query["role"] as string | undefined, req.query["step"] as string | undefined);
+  const role = req.query["role"] as string | undefined;
+  const step = req.query["step"] as string | undefined;
+  if (!isValidXrplAddress(address)) {
+    res.status(400).json({ error: "Invalid XRPL address" });
+    return;
+  }
+  if (!isValidRole(role)) {
+    res.status(400).json({ error: "Invalid role: must be 'vendor' or 'buyer'" });
+    return;
+  }
+  if (!isValidStep(step)) {
+    res.status(400).json({ error: "Invalid step: must be 'identity' or 'tax'" });
+    return;
+  }
+  const types = credentialTypesForRole(role, step);
   try {
     const status = await checkCredentialStatus(address, types);
     logger.info({ address, status }, "kyc: credential status checked");
     res.json({ status });
   } catch (err) {
     logger.error({ address, err }, "kyc: failed to check credential status");
-    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -60,13 +88,21 @@ router.get("/status/:address", async (req: Request, res: Response): Promise<void
 router.post("/start", async (req: Request, res: Response): Promise<void> => {
   const role = req.body?.["role"] as string | undefined;
   const step = req.body?.["step"] as string | undefined;
+  if (!isValidRole(role)) {
+    res.status(400).json({ error: "Invalid role: must be 'vendor' or 'buyer'" });
+    return;
+  }
+  if (!isValidStep(step)) {
+    res.status(400).json({ error: "Invalid step: must be 'identity' or 'tax'" });
+    return;
+  }
   try {
     const result = await startVerification(role, step);
     logger.info({ verificationId: result.verificationId, role }, "kyc: verification session started");
     res.json(result);
   } catch (err) {
     logger.error({ err }, "kyc: failed to start verification");
-    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -88,13 +124,16 @@ router.get("/stream/:verificationId", async (req: Request, res: Response): Promi
 
   logger.info({ verificationId }, "kyc: SSE polling started");
 
+  let clientGone = false;
+  req.on("close", () => { clientGone = true; });
+
   const send = (payload: Record<string, unknown>) =>
     res.write(`data: ${JSON.stringify(payload)}\n\n`);
 
   const deadline = Date.now() + POLL_TIMEOUT_MS;
 
   try {
-    while (!res.destroyed && Date.now() < deadline) {
+    while (!res.destroyed && !clientGone && Date.now() < deadline) {
       const result = await pollVerificationStatus(verificationId);
 
       if (result.state === "SUCCESS") {
@@ -140,8 +179,21 @@ router.post("/issue", async (req: Request, res: Response): Promise<void> => {
     res.status(400).json({ error: "Missing required field: address" });
     return;
   }
-
-  const types = credentialTypesForRole(req.body["role"] as string | undefined, req.body["step"] as string | undefined);
+  if (!isValidXrplAddress(address)) {
+    res.status(400).json({ error: "Invalid XRPL address" });
+    return;
+  }
+  const role = req.body["role"] as string | undefined;
+  const step = req.body["step"] as string | undefined;
+  if (!isValidRole(role)) {
+    res.status(400).json({ error: "Invalid role: must be 'vendor' or 'buyer'" });
+    return;
+  }
+  if (!isValidStep(step)) {
+    res.status(400).json({ error: "Invalid step: must be 'identity' or 'tax'" });
+    return;
+  }
+  const types = credentialTypesForRole(role, step);
   try {
     logger.info({ address, types }, "kyc: issuing credentials");
     const result = await issueCredential(address, types);
@@ -149,7 +201,7 @@ router.post("/issue", async (req: Request, res: Response): Promise<void> => {
     res.json(result);
   } catch (err) {
     logger.error({ address, err }, "kyc: credential issuance failed");
-    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -159,14 +211,28 @@ router.post("/issue", async (req: Request, res: Response): Promise<void> => {
  */
 router.get("/prepare-accept/:address", async (req: Request, res: Response): Promise<void> => {
   const { address } = req.params;
-  const types = credentialTypesForRole(req.query["role"] as string | undefined, req.query["step"] as string | undefined);
+  const role = req.query["role"] as string | undefined;
+  const step = req.query["step"] as string | undefined;
+  if (!isValidXrplAddress(address)) {
+    res.status(400).json({ error: "Invalid XRPL address" });
+    return;
+  }
+  if (!isValidRole(role)) {
+    res.status(400).json({ error: "Invalid role: must be 'vendor' or 'buyer'" });
+    return;
+  }
+  if (!isValidStep(step)) {
+    res.status(400).json({ error: "Invalid step: must be 'identity' or 'tax'" });
+    return;
+  }
+  const types = credentialTypesForRole(role, step);
   try {
     const txs = await prepareAcceptCredential(address, types);
     logger.info({ address, count: txs.length }, "kyc: CredentialAccept txs prepared");
     res.json({ txs });
   } catch (err) {
     logger.error({ address, err }, "kyc: failed to prepare CredentialAccept txs");
-    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -181,7 +247,16 @@ router.post("/delete", async (req: Request, res: Response): Promise<void> => {
     res.status(400).json({ error: "Missing required field: address" });
     return;
   }
-  const types = credentialTypesForRole(req.body["role"] as string | undefined);
+  if (!isValidXrplAddress(address)) {
+    res.status(400).json({ error: "Invalid XRPL address" });
+    return;
+  }
+  const role = req.body["role"] as string | undefined;
+  if (!isValidRole(role)) {
+    res.status(400).json({ error: "Invalid role: must be 'vendor' or 'buyer'" });
+    return;
+  }
+  const types = credentialTypesForRole(role);
   try {
     logger.info({ address, types }, "kyc: deleting credentials");
     await deleteCredentials(address, types);
@@ -189,7 +264,7 @@ router.post("/delete", async (req: Request, res: Response): Promise<void> => {
     res.json({ ok: true });
   } catch (err) {
     logger.error({ address, err }, "kyc: credential deletion failed");
-    res.status(500).json({ error: err instanceof Error ? err.message : "Unknown error" });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 

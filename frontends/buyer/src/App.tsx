@@ -1,43 +1,29 @@
+import { KYCBadge } from "@shared/components/KYCBadge";
+import { Modal } from "@shared/components/Modal";
 import { WalletBar } from "@shared/components/WalletBar";
+import { useToast } from "@shared/context/ToastContext";
+import { useKYCReset } from "@shared/hooks/useKYCReset";
 import { useWallet } from "@shared/hooks/useWallet";
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { CreateEscrowResult } from "./api/escrow";
 import { kycApi } from "./api/kyc";
-import { AcceptNft } from "./components/AcceptNft";
+import { AcceptAndFinalizeEscrow } from "./components/AcceptAndFinalizeEscrow";
 import { EscrowCreate } from "./components/EscrowCreate";
-import { EscrowFinish } from "./components/EscrowFinish";
 import { KYCGate } from "./components/KYCGate";
 import { OwnedNFTs, OwnedNFTsHandle } from "./components/OwnedNFTs";
 import { PendingEscrows } from "./components/PendingEscrows";
 import { KYCStep } from "./hooks/useKYC";
 
-type FlowStep = "create" | "accept" | "finish" | "done";
+type FlowStep = "create" | "settle" | "done";
 
-const FLOW_LABELS = ["1. Lock XRP", "2. Accept NFT", "3. Finalize", "4. Done"];
-const FLOW_STEPS: FlowStep[] = ["create", "accept", "finish", "done"];
-
-function KYCBadge({ step }: { step: KYCStep | null }) {
-  if (!step || step === "checking") return null;
-  if (step === "done") {
-    return (
-      <span className="kyc-badge kyc-badge--done" title="Identity verified on XRPL">
-        🪪 ID Verified
-      </span>
-    );
-  }
-  return (
-    <span className="kyc-badge kyc-badge--pending" title="KYC in progress">
-      ⏳ KYC…
-    </span>
-  );
-}
+const FLOW_LABELS = ["1. Lock XRP", "2. Accept + Finalize", "3. Done"];
+const FLOW_STEPS: FlowStep[] = ["create", "settle", "done"];
 
 export default function App() {
   const wallet = useWallet();
+  const { addToast } = useToast();
   const [kycStep, setKycStep] = useState<KYCStep | null>(null);
   const [kycKey, setKycKey] = useState(0);
-  const [resettingKYC, setResettingKYC] = useState(false);
-  const [resetError, setResetError] = useState<string | null>(null);
 
   const [flowStep, setFlowStep] = useState<FlowStep>("create");
   const [escrowResult, setEscrowResult] = useState<(CreateEscrowResult & { nftId: string; amountXrp: number }) | null>(null);
@@ -46,11 +32,7 @@ export default function App() {
 
   const handleEscrowCreated = (result: CreateEscrowResult & { nftId: string; amountXrp: number }) => {
     setEscrowResult(result);
-    setFlowStep("accept");
-  };
-
-  const handleNftAccepted = () => {
-    setFlowStep("finish");
+    setFlowStep("settle");
   };
 
   const handleFinished = (_hash: string) => {
@@ -64,34 +46,40 @@ export default function App() {
   };
 
   const handleResumeEscrow = (escrow: import("./api/escrow").EscrowObject) => {
+    const nftId = escrow.NftId ?? "";
+    // BUYER-006: validate required fields before transitioning to settle step
+    if (!nftId) {
+      addToast("Cannot resume: escrow is missing NFT ID. Please wait for the vendor to initiate a transfer.", "error");
+      return;
+    }
     const result: CreateEscrowResult & { nftId: string; amountXrp: number } = {
       escrowSequence: escrow.Sequence,
       hash: "",
       escrowAccount: escrow.Account,
       buyerAddress: wallet.address!,
       cancelAfter: escrow.CancelAfter ?? 0,
-      nftId: escrow.NftId ?? "",
+      nftId,
       amountXrp: parseInt(escrow.Amount, 10) / 1_000_000,
     };
     handleEscrowCreated(result);
   };
 
-  const handleResetKYC = async () => {
-    if (!wallet.address || resettingKYC) return;
-    setResettingKYC(true);
-    setResetError(null);
-    try {
-      await kycApi.deleteCredentials(wallet.address);
+  // BUYER-011: reject sign calls immediately if wallet is no longer connected
+  const safeSign = useCallback(async (tx: Record<string, unknown>): Promise<string> => {
+    if (!wallet.connected) throw new Error("Wallet disconnected. Please reconnect and try again.");
+    return wallet.sign(tx);
+  }, [wallet.connected, wallet.sign]);
+
+  const { resetError, resettingKYC, handleResetKYC, resetModalOpen, setResetModalOpen } = useKYCReset(
+    kycApi.deleteCredentials,
+    wallet.address,
+    () => {
       setKycStep(null);
       setKycKey((k) => k + 1);
       setFlowStep("create");
       setEscrowResult(null);
-    } catch (err) {
-      setResetError(err instanceof Error ? err.message : "Failed to reset KYC");
-    } finally {
-      setResettingKYC(false);
-    }
-  };
+    },
+  );
 
   const handleDisconnect = () => {
     wallet.disconnect();
@@ -103,6 +91,15 @@ export default function App() {
 
   return (
     <div className="app">
+      <Modal
+        open={resetModalOpen}
+        title="Reset KYC"
+        danger
+        message="Reset your KYC credentials? You will need to re-verify your identity."
+        confirmLabel="Reset"
+        onConfirm={() => { setResetModalOpen(false); handleResetKYC(); }}
+        onCancel={() => setResetModalOpen(false)}
+      />
       <header>
         <div className="header-top">
           <div className="header-brand">
@@ -114,10 +111,10 @@ export default function App() {
 
         {wallet.connected && (
           <div className="header-status">
-            <KYCBadge step={kycStep} />
+            <KYCBadge step={kycStep} variant="buyer" />
             {kycStep === "done" && (
               <button
-                onClick={handleResetKYC}
+                onClick={() => setResetModalOpen(true)}
                 disabled={resettingKYC}
                 className="btn-secondary"
                 style={{ fontSize: "0.65rem", padding: "0.25rem 0.6rem" }}
@@ -161,26 +158,22 @@ export default function App() {
             </button>
           </div>
         ) : (
-          <KYCGate key={kycKey} address={wallet.address!} sign={wallet.sign} onStep={setKycStep}>
+          <KYCGate key={kycKey} address={wallet.address!} sign={safeSign} onStep={setKycStep}>
             {flowStep === "create" && (
               <EscrowCreate
                 buyerAddress={wallet.address!}
-                sign={wallet.sign}
+                sign={safeSign}
                 onCreated={handleEscrowCreated}
               />
             )}
 
-            {flowStep === "accept" && wallet.address && (
-              <AcceptNft
+            {flowStep === "settle" && wallet.address && escrowResult && (
+              <AcceptAndFinalizeEscrow
                 buyerAddress={wallet.address}
-                nftId={escrowResult?.nftId}
-                sign={wallet.sign}
-                onAccepted={handleNftAccepted}
+                sign={safeSign}
+                escrow={escrowResult}
+                onFinished={handleFinished}
               />
-            )}
-
-            {flowStep === "finish" && escrowResult && (
-              <EscrowFinish escrow={escrowResult} onFinished={handleFinished} />
             )}
 
             {flowStep === "done" && (
@@ -197,7 +190,7 @@ export default function App() {
             )}
 
             {wallet.address && (
-              <PendingEscrows address={wallet.address} sign={wallet.sign} onResume={handleResumeEscrow} />
+              <PendingEscrows address={wallet.address} sign={safeSign} onResume={handleResumeEscrow} />
             )}
 
             {wallet.address && (

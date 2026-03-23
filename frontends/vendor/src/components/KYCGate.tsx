@@ -1,6 +1,6 @@
 import { QRCodeSVG } from "qrcode.react";
 import { useKYC, KYCStep } from "../hooks/useKYC";
-import { nftApi } from "../api/nft";
+import { submitTx } from "../api/nft";
 import { useEffect, useState } from "react";
 
 interface Props {
@@ -19,11 +19,20 @@ function getProgress(step: KYCStep, verificationStep: "identity" | "tax" | null)
 }
 
 export function KYCGate({ address, sign, children, onStep }: Props) {
-  const submit = (txBlob: string) => nftApi.submit(txBlob);
-  const kyc = useKYC(address, sign, submit);
+  const kyc = useKYC(address, sign, submitTx);
   const [starting, setStarting] = useState(false);
+  const [scanWarning, setScanWarning] = useState(false);
 
-  useEffect(() => { onStep?.(kyc.step); }, [kyc.step]);
+  useEffect(() => { onStep?.(kyc.step); }, [kyc.step, onStep]);
+
+  useEffect(() => {
+    if (kyc.step !== "scanning") {
+      setScanWarning(false);
+      return;
+    }
+    const id = setTimeout(() => setScanWarning(true), 2 * 60 * 1000);
+    return () => clearTimeout(id);
+  }, [kyc.step]);
 
   useEffect(() => {
     if (kyc.step !== "start") setStarting(false);
@@ -137,6 +146,11 @@ export function KYCGate({ address, sign, children, onStep }: Props) {
                   <div className="spinner spinner--sm" />
                   <span>Waiting for scan…</span>
                 </div>
+                {scanWarning && (
+                  <p className="info" style={{ fontSize: "0.78rem", textAlign: "center" }}>
+                    Taking longer than expected? Make sure your SWIYU app is open and try scanning again.
+                  </p>
+                )}
               </>
             )}
           </div>

@@ -208,8 +208,9 @@ input[type="file"] {
   letter-spacing: 0;
 }
 
-input:focus {
-  outline: 1px solid #6b1728;
+input:focus-visible {
+  outline: 2px solid #6b1728;
+  outline-offset: 2px;
   border-color: transparent;
 }
 
@@ -245,8 +246,13 @@ button.btn-secondary:hover:not(:disabled) {
   background: #ede8dc;
   color: #1a120a;
 }
+button:focus-visible {
+  outline: 2px solid #6b1728;
+  outline-offset: 2px;
+}
+
 button:disabled {
-  opacity: 0.35;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
@@ -272,6 +278,18 @@ button:disabled {
   text-transform: uppercase;
   color: #8a7a68;
 }
+
+@keyframes result-enter {
+  0%   { box-shadow: 0 0 0 2px #4a7a50; background: rgba(74, 122, 80, 0.1); }
+  60%  { box-shadow: 0 0 0 2px rgba(74, 122, 80, 0.4); background: rgba(74, 122, 80, 0.04); }
+  100% { box-shadow: 0 0 0 0 transparent; background: #ede8dc; }
+}
+@keyframes result-exit {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(-10px); }
+}
+.result--new      { animation: result-enter 2.5s ease-out forwards; }
+.result--removing { animation: result-exit 0.35s ease-in forwards; pointer-events: none; }
 
 .info {
   font-family: system-ui, sans-serif;
@@ -723,6 +741,9 @@ button:disabled {
   gap: 0.6rem;
   animation: toast-in 0.2s ease;
 }
+.toast:hover {
+  background: #f0ece3;
+}
 .toast--success {
   border-left: 3px solid #4a7a50;
 }
@@ -805,6 +826,53 @@ button:disabled {
   background: #6b1728;
   transition: width 0.6s ease;
   border-radius: 2px;
+}
+
+/* ── Layout helpers ─────────────────────────────────────── */
+
+.row-space-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.btn-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* ── Escrow status text ──────────────────────────────────── */
+
+.escrow-status-text {
+  font-family: system-ui, sans-serif;
+  font-size: 0.78rem;
+}
+.escrow-status-text--ok   { color: #4a7a50; }
+.escrow-status-text--muted { color: #8a7a68; }
+
+/* ── Danger outline button ───────────────────────────────── */
+
+.btn-danger-outline {
+  background: transparent;
+  border: 1px solid #9b2a2a;
+  color: #9b2a2a;
+}
+
+/* ── Modal message ───────────────────────────────────────── */
+
+.modal-message {
+  font-family: system-ui, sans-serif;
+  font-size: 0.88rem;
+  color: #5a4a38;
+  line-height: 1.6;
+}
+
+/* ── Modal confirm danger ────────────────────────────────── */
+
+.btn-confirm--danger {
+  background: #9b2a2a;
+  border-color: #9b2a2a;
 }
 
 /* ── Empty state ────────────────────────────────────────── */

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { kycApi, CredentialStatus } from "../api/kyc";
 import { kycLog } from "@shared/logger";
 import { readSSEStream } from "@shared/utils/readSSEStream";
@@ -30,6 +30,7 @@ export function useKYC(
     streamState: null,
     error: null,
   });
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const setStep = (step: KYCStep, extra: Partial<KYCState> = {}) =>
     setState((s) => ({ ...s, step, error: null, streamState: null, ...extra }));
@@ -68,7 +69,17 @@ export function useKYC(
       .then((status: CredentialStatus) => {
         kycLog.info("credential status", { address, status });
         if (status === "accepted") setStep("done");
-        else if (status === "pending_acceptance") acceptCredential(address).then(() => setStep("done")).catch(() => {});
+        else if (status === "pending_acceptance") {
+          acceptCredential(address)
+            .then(() => setStep("done"))
+            .catch((err) => {
+              // acceptCredential already sets step:"error" — this is a fallback guard
+              setState((s) => s.step === "error" ? s : {
+                ...s, step: "error",
+                error: err instanceof Error ? err.message : "Failed to accept credential",
+              });
+            });
+        }
         else setStep("start");
       })
       .catch((err) => {
@@ -79,6 +90,10 @@ export function useKYC(
 
   const startKYC = useCallback(async () => {
     if (!address) return;
+    // Abort any ongoing SSE stream before starting a new one (BUYER-002)
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
     try {
       const status = await kycApi.status(address);
       if (status === "pending_acceptance") {
@@ -100,7 +115,7 @@ export function useKYC(
       // Yield to the event loop so React renders the QR code before SSE events arrive
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
 
-      const response = await fetch(kycApi.streamUrl(verificationId));
+      const response = await fetch(kycApi.streamUrl(verificationId), { signal: controller.signal });
       if (!response.ok) throw new Error(`Stream request failed: ${response.statusText}`);
 
       for await (const event of readSSEStream(response)) {
@@ -133,6 +148,8 @@ export function useKYC(
       // Stream closed without a terminal event (server timeout / network drop)
       throw new Error("Verification session ended unexpectedly. Please try again.");
     } catch (err) {
+      // Ignore AbortError — the stream was intentionally cancelled (e.g., reset or retry)
+      if (err instanceof Error && err.name === "AbortError") return;
       kycLog.error("KYC failed", { err });
       setState((s) => ({
         ...s,
@@ -142,7 +159,10 @@ export function useKYC(
     }
   }, [address, acceptCredential]);
 
-  const retry = useCallback(() => setStep("start"), []);
+  const retry = useCallback(() => {
+    abortControllerRef.current?.abort();
+    setStep("start");
+  }, []);
 
   return { ...state, startKYC, retry };
 }

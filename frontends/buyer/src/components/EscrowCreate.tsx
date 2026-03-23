@@ -23,6 +23,10 @@ export function EscrowCreate({ buyerAddress, sign, onCreated }: Props) {
   const [result, setResult] = useState<(CreateEscrowResult & { nftId: string; amountXrp: number }) | null>(null);
   const [reserveOverheadXrp, setReserveOverheadXrp] = useState<number | null>(null);
   const [errors, setErrors] = useState<{ seller?: string; nft?: string; amount?: string }>({});
+  // BUYER-005: persist the signed payment blob so retry can reuse it
+  const [savedPaymentBlob, setSavedPaymentBlob] = useState<string | null>(null);
+  // BUYER-004: track whether the payment was already submitted to the network
+  const [paymentSubmitted, setPaymentSubmitted] = useState(false);
 
   function validate() {
     const e: typeof errors = {};
@@ -40,20 +44,43 @@ export function EscrowCreate({ buyerAddress, sign, onCreated }: Props) {
   const handleCreate = async () => {
     if (!validate()) return;
     setLoading(true);
-    setStep(0);
     setResult(null);
+
+    // BUYER-005: if the payment was already signed+submitted (prior partial failure),
+    // skip steps 0-1 and reuse the existing blob for the escrow creation retry.
+    const reusingBlob = paymentSubmitted && !!savedPaymentBlob;
+
     try {
       const amt = parseFloat(amountXrp);
+      let paymentTxBlob: string;
 
-      escrowLog.info("preparing payment tx", { buyerAddress, amountXrp });
-      const { tx, reserveOverheadXrp: reserve } = await escrowApi.preparePayment({ buyerAddress, amountXrp: amt });
-      setReserveOverheadXrp(reserve);
+      if (reusingBlob) {
+        escrowLog.info("reusing previously signed payment blob for escrow retry");
+        paymentTxBlob = savedPaymentBlob!;
+        setStep(2);
+      } else {
+        setStep(0);
+        escrowLog.info("preparing payment tx", { buyerAddress, amountXrp });
+        const { tx, reserveOverheadXrp: reserve, buyerBalanceXrp } = await escrowApi.preparePayment({ buyerAddress, amountXrp: amt });
+        setReserveOverheadXrp(reserve);
 
-      setStep(1);
-      escrowLog.info("signing payment with Otsu");
-      const paymentTxBlob = await sign(tx);
+        // BUYER-003: pre-check balance before asking user to sign
+        const totalRequired = amt + reserve;
+        if (buyerBalanceXrp < totalRequired) {
+          const shortfall = (totalRequired - buyerBalanceXrp).toFixed(2);
+          throw new Error(`Insufficient XRP balance. You need at least ${totalRequired.toFixed(2)} XRP but have ${buyerBalanceXrp.toFixed(2)} XRP (${shortfall} XRP short).`);
+        }
+
+        setStep(1);
+        escrowLog.info("signing payment with Otsu");
+        paymentTxBlob = await sign(tx);
+        setSavedPaymentBlob(paymentTxBlob);
+      }
 
       setStep(2);
+      // BUYER-004: mark payment as submitted before sending — if escrow creation fails,
+      // we know the payment was already on-chain and must not re-sign on retry.
+      setPaymentSubmitted(true);
       escrowLog.info("creating escrow", { sellerAddress, nftId });
       const res = await escrowApi.create({
         paymentTxBlob,
@@ -65,11 +92,15 @@ export function EscrowCreate({ buyerAddress, sign, onCreated }: Props) {
 
       escrowLog.info("escrow created", res);
       const full = { ...res, nftId: nftId.trim().toUpperCase(), amountXrp: amt };
+      // Reset payment tracking on success
+      setSavedPaymentBlob(null);
+      setPaymentSubmitted(false);
       setResult(full);
       addToast(`Escrow created — ${amt} XRP locked on-chain.`, "success");
     } catch (err) {
       escrowLog.error("create failed", { err });
-      addToast(err instanceof Error ? err.message : "Escrow creation failed", "error");
+      const message = err instanceof Error ? err.message : "Escrow creation failed";
+      addToast(message, "error");
       setStep(-1);
     } finally {
       setLoading(false);
@@ -178,6 +209,13 @@ export function EscrowCreate({ buyerAddress, sign, onCreated }: Props) {
         </div>
         {errors.amount && <span className="field-error">{errors.amount}</span>}
       </label>
+
+      {paymentSubmitted && (
+        <p className="info" style={{ fontSize: "0.78rem", color: "#8a5a2a" }}>
+          ⚠ Your payment was submitted but escrow creation failed. Retrying will
+          reuse the same payment — no duplicate charge will occur.
+        </p>
+      )}
 
       {step >= 0 && (
         <div style={{ marginTop: "0.25rem" }}>

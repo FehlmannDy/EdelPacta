@@ -110,10 +110,8 @@ export function MintForm({ onMinted }: Props) {
         Allow transfer to new owner
       </label>
 
-      {loading && status && (
-        <p style={{ fontSize: "0.82rem", color: "#8a7060", fontFamily: "system-ui" }}>
-          <span className="spinner spinner--sm spinner--inline" /> {status}
-        </p>
+      {loading && (
+        <div className="info"><span className="spinner spinner--sm spinner--inline" /> {status || "Processing…"}</div>
       )}
 
       <button onClick={handleMint} disabled={loading}>

@@ -23,6 +23,12 @@ export function Copyable({ text, truncate, children, className }: Props) {
       title={truncate ? text : "Click to copy"}
     >
       {copied ? "✓ Copied" : display}
+      <span
+        aria-live="polite"
+        style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0,0,0,0)" }}
+      >
+        {copied ? "Copied to clipboard" : ""}
+      </span>
     </span>
   );
 }

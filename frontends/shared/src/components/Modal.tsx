@@ -15,14 +15,14 @@ export function Modal({ open, title, message, confirmLabel = "Confirm", onConfir
     <div className="modal-overlay" onClick={onCancel}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h3 className={danger ? "modal-title--danger" : ""}>{title}</h3>
-        <p style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.88rem", color: "#5a4a38", lineHeight: 1.6 }}>
+        <p className="modal-message">
           {message}
         </p>
         <div className="modal-actions">
           <button className="btn-secondary" onClick={onCancel}>Cancel</button>
           <button
             onClick={onConfirm}
-            style={danger ? { background: "#9b2a2a", borderColor: "#9b2a2a" } : undefined}
+            className={danger ? "btn-confirm--danger" : ""}
           >
             {confirmLabel}
           </button>

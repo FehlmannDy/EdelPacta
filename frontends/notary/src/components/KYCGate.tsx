@@ -44,7 +44,12 @@ export function KYCGate({ address, sign, children, onStep }: Props) {
   }, [kyc.step]);
 
   if (kyc.step === "done") return <>{children}</>;
-  if (kyc.step === "checking") return <div className="spinner" style={{ marginTop: "3rem" }} />;
+  if (kyc.step === "checking") return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginTop: "3rem", gap: "0.75rem" }}>
+      <div className="spinner" />
+      <span className="info">Checking your credentials…</span>
+    </div>
+  );
 
   const progress = STEP_PROGRESS[kyc.step];
 

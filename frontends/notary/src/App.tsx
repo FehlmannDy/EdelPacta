@@ -1,53 +1,40 @@
 import { useState, useRef } from "react";
 import { useWallet } from "@shared/hooks/useWallet";
+import { KYCBadge } from "@shared/components/KYCBadge";
+import { Modal } from "@shared/components/Modal";
 import { WalletBar } from "@shared/components/WalletBar";
+import { useKYCReset } from "@shared/hooks/useKYCReset";
 import { KYCGate } from "./components/KYCGate";
 import { MintForm } from "./components/MintForm";
 import { PendingOffers, PendingOffersHandle } from "./components/PendingOffers";
 import { KYCStep } from "./hooks/useKYC";
 import { kycApi } from "./api/kyc";
 
-function KYCBadge({ step }: { step: KYCStep | null }) {
-  if (!step || step === "checking") return null;
-  if (step === "done") {
-    return (
-      <span className="kyc-badge kyc-badge--done" title="Swiss e-ID verified on XRPL">
-        🪪 ID Verified
-      </span>
-    );
-  }
-  return (
-    <span className="kyc-badge kyc-badge--pending" title="KYC in progress">
-      ⏳ KYC…
-    </span>
-  );
-}
-
 export default function App() {
   const wallet = useWallet();
   const [kycStep, setKycStep] = useState<KYCStep | null>(null);
   const [kycKey, setKycKey] = useState(0);
-  const [resettingKYC, setResettingKYC] = useState(false);
-  const [resetError, setResetError] = useState<string | null>(null);
   const pendingRef = useRef<PendingOffersHandle>(null);
-
-  const handleResetKYC = async () => {
-    if (!wallet.address || resettingKYC) return;
-    setResettingKYC(true);
-    setResetError(null);
-    try {
-      await kycApi.deleteCredentials(wallet.address);
+  const { resetError, resettingKYC, handleResetKYC, resetModalOpen, setResetModalOpen } = useKYCReset(
+    kycApi.deleteCredentials,
+    wallet.address,
+    () => {
       setKycStep(null);
       setKycKey((k) => k + 1);
-    } catch (err) {
-      setResetError(err instanceof Error ? err.message : "Failed to reset KYC");
-    } finally {
-      setResettingKYC(false);
-    }
-  };
+    },
+  );
 
   return (
     <div className="app">
+      <Modal
+        open={resetModalOpen}
+        title="Reset KYC"
+        danger
+        message="Reset your KYC credentials? You will need to re-verify your identity."
+        confirmLabel="Reset"
+        onConfirm={() => { setResetModalOpen(false); handleResetKYC(); }}
+        onCancel={() => setResetModalOpen(false)}
+      />
       <header>
         <div className="header-top">
           <div className="header-brand">
@@ -58,11 +45,11 @@ export default function App() {
         </div>
         {wallet.connected && (
           <div className="header-status">
-            <KYCBadge step={kycStep} />
+            <KYCBadge step={kycStep} variant="notary" />
             {kycStep === "done" && (
               <>
                 <button
-                  onClick={handleResetKYC}
+                  onClick={() => setResetModalOpen(true)}
                   disabled={resettingKYC}
                   className="btn-secondary"
                   style={{ fontSize: "0.75rem", padding: "0.25rem 0.6rem" }}

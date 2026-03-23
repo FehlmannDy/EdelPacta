@@ -332,6 +332,8 @@ export async function getIncomingOffersForAccount(
     // Step 1: crawl account_tx to collect ALL NFT IDs ever minted
     const mintedNftIds = new Set<string>();
     let marker: unknown = undefined;
+    let pages = 0;
+    const MAX_PAGES = 50;
 
     do {
       const txResp = await client.request({
@@ -358,6 +360,11 @@ export async function getIncomingOffersForAccount(
       }
 
       marker = txResp.result.marker;
+      pages++;
+      if (pages >= MAX_PAGES && marker) {
+        logger.warn({ minterAddress, pages }, "xrpl: account_tx pagination truncated at max pages");
+        break;
+      }
     } while (marker);
 
     // Step 2 + 3: for each minted NFT, fetch sell offers and filter by destination
