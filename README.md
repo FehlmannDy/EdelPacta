@@ -6,37 +6,32 @@ Buying real estate in Switzerland requires locking millions of CHF in a notary's
 
 EdelPacta replaces the notary's bank account with an **XRPL Smart Escrow powered by WASM Hooks**. Property titles are minted as NFTs, identity is verified via the Swiss Government's digital ID (Swiyu), and settlement is atomic — funds and title swap in a single transaction enforced at protocol level.
 
-| | Traditional | EdelPacta |
-|---|---|---|
-| Settlement | 8 weeks | 3 seconds |
-| Fees | ~CHF 20,000 | < CHF 0.01 |
-| KYC | Paper documents | Swiyu e-ID / SD-JWT |
+|                   | Traditional              | EdelPacta            |
+| ----------------- | ------------------------ | -------------------- |
+| Settlement        | 8 weeks                  | 3 seconds            |
+| Fees              | ~CHF 20,000              | < CHF 0.01           |
+| KYC               | Paper documents          | Swiyu e-ID / SD-JWT  |
 | Counterparty risk | Central point of failure | Zero — WASM enforced |
 
 ---
 
 ## How it works
 
-```
-Seller (Vendor)                 Notary                    Buyer
-      |                            |                         |
-      | 1. KYC via Swiyu e-ID      |                         |
-      |   SWIYU_KYC on-chain ──────┤                         |
-      |   SWIYU_KYC_TAX on-chain   |                         |
-      |                            | 2. Mint property NFT    |
-      |                            |   XLS-20 on XRPL ───────┤
-      |                            |                         | 3. KYC via Swiyu e-ID
-      |                            |                         |   SWIYU_KYC on-chain
-      | 4. Create NFT sell offer   |                         |
-      |   Destination = Buyer ─────┼─────────────────────────┤
-      |                            |                         | 5. Lock XRP in escrow
-      |                            |                         |   WASM FinishFunction
-      |                            |                         | 6. Accept NFT sell offer
-      |                            |                         |   NFT title transferred
-      |                            | 7. Sign EscrowFinish    |
-      |                            |   WASM verifies 5 conds |
-      |                            |   → Returns 1           |
-      | ← XRP released             |                         | (NFT already held)
+```mermaid
+sequenceDiagram
+    participant S as Seller (Vendor)
+    participant N as Notary
+    participant B as Buyer
+    participant L as XRPL
+
+    S->>L: 1. KYC via Swiyu e-ID<br/>SWIYU_KYC + SWIYU_KYC_TAX on-chain
+    N->>L: 2. Mint property NFT (XLS-20)
+    B->>L: 3. KYC via Swiyu e-ID<br/>SWIYU_KYC on-chain
+    S->>L: 4. Create NFT sell offer (Destination = Buyer)
+    B->>L: 5. Lock XRP in escrow (WASM FinishFunction)
+    B->>L: 6. Accept NFT sell offer — NFT title transferred
+    N->>L: 7. Sign EscrowFinish<br/>WASM verifies 5 conditions → Returns 1
+    L->>S: XRP released
 ```
 
 **The 5 conditions enforced inside the WASM Hook (Rust):**
@@ -92,15 +87,15 @@ Or copy the example and fill in manually:
 cp .env.example .env
 ```
 
-| Variable | Required | Description |
-|---|---|---|
-| `ISSUER_SEED` | yes | XRPL wallet seed (`sEd…`) used by the backend |
-| `ISSUER_ADDRESS` | yes | XRPL address matching the issuer seed (`r…`) |
-| `ORACLE_SEED` | yes | Oracle wallet seed for dual-signing (can equal `ISSUER_SEED` on devnet) |
-| `ISSUER_DID` | yes | DID of the EdelPacta estate-credential issuer |
-| `BETAID_ISSUER_DID` | yes | DID of the Swiyu betaid issuer for Swiss e-ID |
-| `XRPL_NETWORK` | no | XRPL WebSocket URL (default: `wss://wasm.devnet.rippletest.net:51233`) |
-| `VERIFIER_BASE_URL` | no | Swiyu OID4VP verifier URL (default: `https://beta-verifier.edel-id.ch`) |
+| Variable            | Required | Description                                                             |
+| ------------------- | -------- | ----------------------------------------------------------------------- |
+| `ISSUER_SEED`       | yes      | XRPL wallet seed (`sEd…`) used by the backend                           |
+| `ISSUER_ADDRESS`    | yes      | XRPL address matching the issuer seed (`r…`)                            |
+| `ORACLE_SEED`       | yes      | Oracle wallet seed for dual-signing (can equal `ISSUER_SEED` on devnet) |
+| `ISSUER_DID`        | yes      | DID of the EdelPacta estate-credential issuer                           |
+| `BETAID_ISSUER_DID` | yes      | DID of the Swiyu betaid issuer for Swiss e-ID                           |
+| `XRPL_NETWORK`      | no       | XRPL WebSocket URL (default: `wss://wasm.devnet.rippletest.net:51233`)  |
+| `VERIFIER_BASE_URL` | no       | Swiyu OID4VP verifier URL (default: `https://beta-verifier.edel-id.ch`) |
 
 > Never commit `.env` — it contains wallet seeds. `.gitignore` already excludes it.
 
@@ -112,11 +107,11 @@ cp .env.example .env
 docker compose up --build
 ```
 
-| Service | URL |
-|---|---|
-| Notary UI | http://localhost:3000 |
-| Vendor UI | http://localhost:3001 |
-| Buyer UI | http://localhost:3002 |
+| Service     | URL                   |
+| ----------- | --------------------- |
+| Notary UI   | http://localhost:3000 |
+| Vendor UI   | http://localhost:3001 |
+| Buyer UI    | http://localhost:3002 |
 | Backend API | http://localhost:8081 |
 
 ---
@@ -184,11 +179,11 @@ cd frontends/buyer && npm install && npm run dev    # port 3002
 
 All identity verification uses **OID4VP** presentation requests to the Swiyu verifier. The backend polls for the result via SSE every 2 seconds (5-minute timeout). On success, it issues an XRPL credential (`CredentialCreate`); the Otsu wallet auto-signs the `CredentialAccept`. Credentials are checked on-chain by the WASM Hook at escrow finalization — no off-chain trust required.
 
-| Role | Credentials required |
-|---|---|
-| Notary | `SWIYU_KYC` (Swiss e-ID) |
+| Role   | Credentials required                                            |
+| ------ | --------------------------------------------------------------- |
+| Notary | `SWIYU_KYC` (Swiss e-ID)                                        |
 | Vendor | `SWIYU_KYC` (Swiss e-ID) + `SWIYU_KYC_TAX` (estate attestation) |
-| Buyer | `SWIYU_KYC` (Swiss e-ID) |
+| Buyer  | `SWIYU_KYC` (Swiss e-ID)                                        |
 
 ---
 
@@ -198,13 +193,13 @@ The smart contract lives in `contract/src/lib.rs`, compiled to `my_contract_devn
 
 The `finish()` entry point reads condition data from 6 memos passed in the `EscrowFinish` transaction:
 
-| Memo | Content |
-|---|---|
-| 0 | `NFT_ID` — 32-byte property NFT identifier |
-| 1 | `NOTARY_SIG` — DER-encoded secp256k1 signature |
-| 2 | `NOTARY_PUBKEY` — 33-byte compressed public key |
-| 3 | `ORACLE_SIG` — DER-encoded secp256k1 signature |
-| 4 | `ORACLE_PUBKEY` — 33-byte compressed public key |
-| 5 | `BUYER_ADDR` — 20-byte buyer AccountID |
+| Memo | Content                                         |
+| ---- | ----------------------------------------------- |
+| 0    | `NFT_ID` — 32-byte property NFT identifier      |
+| 1    | `NOTARY_SIG` — DER-encoded secp256k1 signature  |
+| 2    | `NOTARY_PUBKEY` — 33-byte compressed public key |
+| 3    | `ORACLE_SIG` — DER-encoded secp256k1 signature  |
+| 4    | `ORACLE_PUBKEY` — 33-byte compressed public key |
+| 5    | `BUYER_ADDR` — 20-byte buyer AccountID          |
 
 Returns `1` to release funds, `0` to keep the escrow locked.
