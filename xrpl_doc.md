@@ -74,7 +74,7 @@ import { Client } from "xrpl";
 
 async function withClient<T>(
   networkUrl: string,
-  fn: (client: Client) => Promise<T>
+  fn: (client: Client) => Promise<T>,
 ): Promise<T> {
   const client = new Client(networkUrl);
   await client.connect();
@@ -94,6 +94,7 @@ const result = await withClient(networkUrl, async (client) => {
 ```
 
 **Network URLs:**
+
 - XRPL WASM Devnet: `wss://wasm.devnet.rippletest.net:51233`
 - XRPL Testnet: `wss://s.altnet.rippletest.net:51233`
 - XRPL Mainnet: `wss://xrplcluster.com`
@@ -116,9 +117,9 @@ const wallet = Wallet.fromSeed("sEd...");
 ### Sign a Transaction
 
 ```typescript
-const prepared = await client.autofill(tx);      // Fills Sequence, Fee, LastLedgerSequence
-const signed   = wallet.sign(prepared);           // Returns { tx_blob, hash }
-const result   = await client.submitAndWait(signed.tx_blob);
+const prepared = await client.autofill(tx); // Fills Sequence, Fee, LastLedgerSequence
+const signed = wallet.sign(prepared); // Returns { tx_blob, hash }
+const result = await client.submitAndWait(signed.tx_blob);
 ```
 
 ### Submit a Pre-Signed Transaction Blob
@@ -126,10 +127,19 @@ const result   = await client.submitAndWait(signed.tx_blob);
 ```typescript
 // tx_blob = signed binary transaction from a browser wallet (e.g., Otsu, GemWallet)
 const result = await client.submitAndWait(txBlob);
-const meta   = result.result.meta as { TransactionResult: string } | string | undefined;
+const meta = result.result.meta as
+  | { TransactionResult: string }
+  | string
+  | undefined;
 
-if (!meta || typeof meta === "string" || meta.TransactionResult !== "tesSUCCESS") {
-  throw new Error(`Transaction failed: ${typeof meta === "string" ? meta : meta?.TransactionResult}`);
+if (
+  !meta ||
+  typeof meta === "string" ||
+  meta.TransactionResult !== "tesSUCCESS"
+) {
+  throw new Error(
+    `Transaction failed: ${typeof meta === "string" ? meta : meta?.TransactionResult}`,
+  );
 }
 ```
 
@@ -144,18 +154,25 @@ To fill `Sequence`, `Fee`, and `LastLedgerSequence` manually (needed when using 
 ```typescript
 async function autofillBase(client: Client, account: string) {
   const [accInfo, feeInfo, ledgerInfo] = await Promise.all([
-    client.request({ command: "account_info", account, ledger_index: "current" }),
+    client.request({
+      command: "account_info",
+      account,
+      ledger_index: "current",
+    }),
     client.request({ command: "fee" }),
     client.request({ command: "ledger", ledger_index: "validated" }),
   ]);
 
-  const accountData = accInfo.result.account_data as { Sequence: number; Balance: string };
+  const accountData = accInfo.result.account_data as {
+    Sequence: number;
+    Balance: string;
+  };
 
   return {
-    sequence:     accountData.Sequence,
-    balanceXrp:   Number(accountData.Balance) / 1_000_000,
-    medianFee:    Number((feeInfo.result as any)["drops"]["median_fee"]),
-    lastLedger:   ((ledgerInfo.result as any)["ledger_index"] as number) + 100,
+    sequence: accountData.Sequence,
+    balanceXrp: Number(accountData.Balance) / 1_000_000,
+    medianFee: Number((feeInfo.result as any)["drops"]["median_fee"]),
+    lastLedger: ((ledgerInfo.result as any)["ledger_index"] as number) + 100,
   };
 }
 ```
@@ -172,10 +189,10 @@ async function autofillBase(client: Client, account: string) {
 
 ```typescript
 const NFTokenMintFlags = {
-  tfBurnable:     0x00000001,  // Issuer can burn the NFT
-  tfOnlyXRP:      0x00000002,  // NFT can only trade for XRP
-  tfTransferable: 0x00000008,  // Third-party transfers allowed (required for TransferFee)
-  tfMutable:      0x00000010,  // URI can be updated via NFTokenModify
+  tfBurnable: 0x00000001, // Issuer can burn the NFT
+  tfOnlyXRP: 0x00000002, // NFT can only trade for XRP
+  tfTransferable: 0x00000008, // Third-party transfers allowed (required for TransferFee)
+  tfMutable: 0x00000010, // URI can be updated via NFTokenModify
 };
 ```
 
@@ -190,20 +207,20 @@ import { NFTokenMint, convertStringToHex } from "xrpl";
 
 const mintTx: NFTokenMint = {
   TransactionType: "NFTokenMint",
-  Account:         wallet.address,
-  NFTokenTaxon:    1,                              // uint32, arbitrary classification
-  Flags:           NFTokenMintFlags.tfTransferable,
-  TransferFee:     500,                            // 500 = 5% commission (basis points 0–50000)
-  URI:             convertStringToHex("https://example.com/deed/1"),  // optional, max 256 bytes
+  Account: wallet.address,
+  NFTokenTaxon: 1, // uint32, arbitrary classification
+  Flags: NFTokenMintFlags.tfTransferable,
+  TransferFee: 500, // 500 = 5% commission (basis points 0–50000)
+  URI: convertStringToHex("https://example.com/deed/1"), // optional, max 256 bytes
 };
 
 const prepared = await client.autofill(mintTx);
-const signed   = wallet.sign(prepared);
-const result   = await client.submitAndWait(signed.tx_blob);
+const signed = wallet.sign(prepared);
+const result = await client.submitAndWait(signed.tx_blob);
 
 // Extract nftokenId from metadata
-const meta       = result.result.meta as Record<string, unknown>;
-const nftokenId  = (meta["nftoken_id"] as string) ?? extractNFTokenId(meta);
+const meta = result.result.meta as Record<string, unknown>;
+const nftokenId = (meta["nftoken_id"] as string) ?? extractNFTokenId(meta);
 ```
 
 #### Extracting NFTokenID from Metadata
@@ -221,12 +238,12 @@ function extractNFTokenId(meta: unknown): string | null {
     const target = node["CreatedNode"] ?? node["ModifiedNode"];
     if (!target || target["LedgerEntryType"] !== "NFTokenPage") continue;
 
-    const fields  = target["NewFields"] ?? target["FinalFields"];
-    const tokens  = fields?.["NFTokens"];
+    const fields = target["NewFields"] ?? target["FinalFields"];
+    const tokens = fields?.["NFTokens"];
     if (!Array.isArray(tokens) || tokens.length === 0) continue;
 
     const last = tokens[tokens.length - 1];
-    const id   = last?.["NFToken"]?.["NFTokenID"];
+    const id = last?.["NFToken"]?.["NFTokenID"];
     if (id) return id as string;
   }
   return null;
@@ -242,12 +259,12 @@ function extractNFTokenId(meta: unknown): string | null {
 ```typescript
 const burnTx = {
   TransactionType: "NFTokenBurn" as const,
-  Account:         wallet.address,
-  NFTokenID:       "000800002...",  // 64-char hex
+  Account: wallet.address,
+  NFTokenID: "000800002...", // 64-char hex
 };
 
 const prepared = await client.autofill(burnTx);
-const signed   = wallet.sign(prepared);
+const signed = wallet.sign(prepared);
 await client.submitAndWait(signed.tx_blob);
 ```
 
@@ -258,19 +275,19 @@ await client.submitAndWait(signed.tx_blob);
 ```typescript
 const offerTx = {
   TransactionType: "NFTokenCreateOffer" as const,
-  Account:         wallet.address,
-  NFTokenID:       nftokenId,
-  Amount:          "0",          // "0" = gift; or XRP drops as string
-  Flags:           1,            // 1 = sell offer (tfSellToken)
-  Destination:     "rBuyer...", // optional: restrict who can accept
+  Account: wallet.address,
+  NFTokenID: nftokenId,
+  Amount: "0", // "0" = gift; or XRP drops as string
+  Flags: 1, // 1 = sell offer (tfSellToken)
+  Destination: "rBuyer...", // optional: restrict who can accept
 };
 
 const prepared = await client.autofill(offerTx);
-const signed   = wallet.sign(prepared);
-const result   = await client.submitAndWait(signed.tx_blob);
+const signed = wallet.sign(prepared);
+const result = await client.submitAndWait(signed.tx_blob);
 
 // Extract offerId from metadata
-const offerId  = extractOfferId(result.result.meta);
+const offerId = extractOfferId(result.result.meta);
 ```
 
 #### Extracting OfferID from Metadata
@@ -285,7 +302,7 @@ function extractOfferId(meta: unknown): string | null {
   for (const node of nodes) {
     const created = node["CreatedNode"];
     if (created?.["LedgerEntryType"] === "NFTokenOffer") {
-      return created["LedgerIndex"] as string;  // LedgerIndex IS the offerId
+      return created["LedgerIndex"] as string; // LedgerIndex IS the offerId
     }
   }
   return null;
@@ -300,13 +317,13 @@ function extractOfferId(meta: unknown): string | null {
 
 ```typescript
 const acceptTx = {
-  TransactionType:  "NFTokenAcceptOffer" as const,
-  Account:          wallet.address,
-  NFTokenSellOffer: offerId,   // The 64-char hex LedgerIndex of the sell offer
+  TransactionType: "NFTokenAcceptOffer" as const,
+  Account: wallet.address,
+  NFTokenSellOffer: offerId, // The 64-char hex LedgerIndex of the sell offer
 };
 
 const prepared = await client.autofill(acceptTx);
-const signed   = wallet.sign(prepared);
+const signed = wallet.sign(prepared);
 await client.submitAndWait(signed.tx_blob);
 // NFT is now in wallet.address
 ```
@@ -318,12 +335,12 @@ await client.submitAndWait(signed.tx_blob);
 ```typescript
 const cancelTx = {
   TransactionType: "NFTokenCancelOffer" as const,
-  Account:         wallet.address,
-  NFTokenOffers:   ["BEEF...", "CAFE..."],  // array of offer LedgerIndex values
+  Account: wallet.address,
+  NFTokenOffers: ["BEEF...", "CAFE..."], // array of offer LedgerIndex values
 };
 
 const prepared = await client.autofill(cancelTx);
-const signed   = wallet.sign(prepared);
+const signed = wallet.sign(prepared);
 await client.submitAndWait(signed.tx_blob);
 ```
 
@@ -335,18 +352,20 @@ await client.submitAndWait(signed.tx_blob);
 
 ```typescript
 const response = await client.request({
-  command:      "account_nfts",
-  account:      address,
+  command: "account_nfts",
+  account: address,
   ledger_index: "validated",
 });
 
 const nfts = (response.result.account_nfts ?? []).map((nft: any) => ({
-  nftokenId:   nft["NFTokenID"] as string,
-  issuer:      nft["Issuer"] as string,
-  taxon:       nft["NFTokenTaxon"] as number,
+  nftokenId: nft["NFTokenID"] as string,
+  issuer: nft["Issuer"] as string,
+  taxon: nft["NFTokenTaxon"] as number,
   transferFee: (nft["TransferFee"] as number) ?? 0,
-  flags:       (nft["Flags"] as number) ?? 0,
-  uri:         nft["URI"] ? Buffer.from(nft["URI"] as string, "hex").toString("utf8") : null,
+  flags: (nft["Flags"] as number) ?? 0,
+  uri: nft["URI"]
+    ? Buffer.from(nft["URI"] as string, "hex").toString("utf8")
+    : null,
 }));
 ```
 
@@ -357,8 +376,8 @@ const nfts = (response.result.account_nfts ?? []).map((nft: any) => ({
 
 ```typescript
 const entry = await client.request({
-  command:      "ledger_entry",
-  index:        offerId,           // 64-char hex offer index
+  command: "ledger_entry",
+  index: offerId, // 64-char hex offer index
   ledger_index: "validated",
 });
 
@@ -378,13 +397,13 @@ const node = (entry.result as any)["node"] as Record<string, unknown>;
 try {
   const response = await client.request({
     command: "nft_sell_offers",
-    nft_id:  nftokenId,
+    nft_id: nftokenId,
   });
 
   const offers = (response.result.offers ?? []).map((o: any) => ({
-    offerId:    o["nft_offer_index"] as string,
-    owner:      o["owner"] as string,
-    amount:     String(o["amount"] ?? "0"),
+    offerId: o["nft_offer_index"] as string,
+    owner: o["owner"] as string,
+    amount: String(o["amount"] ?? "0"),
     destination: (o["destination"] as string) ?? null,
     expiration: (o["expiration"] as number) ?? null,
     isSellOffer: true,
@@ -400,21 +419,21 @@ try {
 
 ```typescript
 const response = await client.request({
-  command:      "account_objects",
-  account:      address,
-  type:         "nft_offer",
+  command: "account_objects",
+  account: address,
+  type: "nft_offer",
   ledger_index: "validated",
 });
 
 const offers = (response.result.account_objects ?? [])
   .filter((o: any) => o["Owner"] === address)
   .map((o: any) => ({
-    offerId:     o["index"] as string,
-    nftokenId:   o["NFTokenID"] as string,
+    offerId: o["index"] as string,
+    nftokenId: o["NFTokenID"] as string,
     destination: (o["Destination"] as string) ?? null,
-    amount:      String(o["Amount"] ?? "0"),
-    expiration:  (o["Expiration"] as number) ?? null,
-    isSellOffer: !!((o["Flags"] as number) & 1),  // Flags bit 0 = sell offer
+    amount: String(o["Amount"] ?? "0"),
+    expiration: (o["Expiration"] as number) ?? null,
+    isSellOffer: !!((o["Flags"] as number) & 1), // Flags bit 0 = sell offer
   }));
 ```
 
@@ -432,17 +451,17 @@ const MAX_PAGES = 50;
 
 do {
   const txResp = await client.request({
-    command:          "account_tx",
-    account:          minterAddress,
+    command: "account_tx",
+    account: minterAddress,
     ledger_index_min: -1,
     ledger_index_max: -1,
-    limit:            200,
+    limit: 200,
     ...(marker ? { marker } : {}),
   });
 
   for (const entry of (txResp.result.transactions ?? []) as any[]) {
     // xrpl.js v2: entry.tx / entry.meta; v3: entry.tx_json / entry.metadata
-    const tx   = entry["tx"]   ?? entry["tx_json"];
+    const tx = entry["tx"] ?? entry["tx_json"];
     const meta = entry["meta"] ?? entry["metadata"];
 
     if (tx?.["TransactionType"] !== "NFTokenMint") continue;
@@ -470,6 +489,7 @@ A **WASM Hook** is a WebAssembly program embedded directly inside an `EscrowCrea
 This enables programmable escrow conditions enforced by consensus — no trusted third party needed.
 
 **Two custom transaction fields** are required (not in the standard XRPL codec):
+
 - `FinishFunction` (Blob) — the compiled WASM bytecode
 - `ComputationAllowance` (UInt32) — maximum WASM execution budget (use `1000000`)
 
@@ -480,11 +500,7 @@ These fields require extending `ripple-binary-codec` with custom definitions.
 ### 5.2 Custom Binary Codec Extension
 
 ```typescript
-import {
-  XrplDefinitions,
-  encode,
-  encodeForSigning,
-} from "ripple-binary-codec";
+import { XrplDefinitions, encode, encodeForSigning } from "ripple-binary-codec";
 import * as rawDefs from "ripple-binary-codec/dist/enums/definitions.json";
 
 const customDefs = new XrplDefinitions({
@@ -497,21 +513,56 @@ const customDefs = new XrplDefinitions({
   },
   FIELDS: [
     ...((rawDefs["FIELDS"] as unknown[]) ?? []),
-    ["FinishFunction", {
-      nth: 32, isVLEncoded: true, isSerialized: true, isSigningField: true, type: "Blob",
-    }],
-    ["ComputationAllowance", {
-      nth: 72, isVLEncoded: false, isSerialized: true, isSigningField: true, type: "UInt32",
-    }],
-    ["Subject", {
-      nth: 24, isVLEncoded: true, isSerialized: true, isSigningField: true, type: "AccountID",
-    }],
-    ["CredentialType", {
-      nth: 31, isVLEncoded: true, isSerialized: true, isSigningField: true, type: "Blob",
-    }],
-    ["URI", {
-      nth: 5, isVLEncoded: true, isSerialized: true, isSigningField: true, type: "Blob",
-    }],
+    [
+      "FinishFunction",
+      {
+        nth: 32,
+        isVLEncoded: true,
+        isSerialized: true,
+        isSigningField: true,
+        type: "Blob",
+      },
+    ],
+    [
+      "ComputationAllowance",
+      {
+        nth: 72,
+        isVLEncoded: false,
+        isSerialized: true,
+        isSigningField: true,
+        type: "UInt32",
+      },
+    ],
+    [
+      "Subject",
+      {
+        nth: 24,
+        isVLEncoded: true,
+        isSerialized: true,
+        isSigningField: true,
+        type: "AccountID",
+      },
+    ],
+    [
+      "CredentialType",
+      {
+        nth: 31,
+        isVLEncoded: true,
+        isSerialized: true,
+        isSigningField: true,
+        type: "Blob",
+      },
+    ],
+    [
+      "URI",
+      {
+        nth: 5,
+        isVLEncoded: true,
+        isSerialized: true,
+        isSigningField: true,
+        type: "Blob",
+      },
+    ],
   ],
 });
 ```
@@ -561,6 +612,7 @@ function signCustomTx(
 ### 5.4 Creating a Smart Escrow
 
 **Full flow:**
+
 1. Buyer sends a Payment to the backend/issuer wallet (to fund the escrow).
 2. Backend creates an `EscrowCreate` with the WASM `FinishFunction` embedded.
 
@@ -569,34 +621,39 @@ function signCustomTx(
 ```typescript
 import { readFileSync } from "fs";
 
-const WASM_PATH     = "./my_contract_devnet.wasm";
-const NETWORK_ID    = 2002;  // XRPL WASM devnet
+const WASM_PATH = "./my_contract_devnet.wasm";
+const NETWORK_ID = 2002; // XRPL WASM devnet
 
 async function preparePayment(buyerAddress: string, amountXrp: number) {
   return await withClient(networkUrl, async (client) => {
-    const { sequence, medianFee, lastLedger, balanceXrp } = await autofillBase(client, buyerAddress);
+    const { sequence, medianFee, lastLedger, balanceXrp } = await autofillBase(
+      client,
+      buyerAddress,
+    );
 
     // Each 500-byte WASM block requires 1 owner reserve unit
-    const serverInfo       = await client.request({ command: "server_info" });
-    const reserveIncXrp    = (serverInfo.result as any)["info"]["validated_ledger"]["reserve_inc_xrp"] as number;
-    const wasmBytes        = readFileSync(WASM_PATH).length;
-    const reserveBlocks    = Math.ceil(wasmBytes / 500);
-    const reserveOverhead  = reserveBlocks * reserveIncXrp;
-    const totalDrops       = Math.round((amountXrp + reserveOverhead) * 1_000_000);
+    const serverInfo = await client.request({ command: "server_info" });
+    const reserveIncXrp = (serverInfo.result as any)["info"][
+      "validated_ledger"
+    ]["reserve_inc_xrp"] as number;
+    const wasmBytes = readFileSync(WASM_PATH).length;
+    const reserveBlocks = Math.ceil(wasmBytes / 500);
+    const reserveOverhead = reserveBlocks * reserveIncXrp;
+    const totalDrops = Math.round((amountXrp + reserveOverhead) * 1_000_000);
 
     return {
       tx: {
-        TransactionType:    "Payment",
-        Account:            buyerAddress,
-        Destination:        issuerWallet.address,
-        Amount:             String(totalDrops),
-        Sequence:           sequence,
+        TransactionType: "Payment",
+        Account: buyerAddress,
+        Destination: issuerWallet.address,
+        Amount: String(totalDrops),
+        Sequence: sequence,
         LastLedgerSequence: lastLedger,
-        Fee:                String(Math.max(medianFee, 12)),
-        NetworkID:          NETWORK_ID,
+        Fee: String(Math.max(medianFee, 12)),
+        NetworkID: NETWORK_ID,
       },
       reserveOverheadXrp: reserveOverhead,
-      buyerBalanceXrp:    balanceXrp,
+      buyerBalanceXrp: balanceXrp,
     };
   });
 }
@@ -608,44 +665,49 @@ async function preparePayment(buyerAddress: string, amountXrp: number) {
 
 ```typescript
 async function createEscrow(
-  paymentTxBlob: string,   // Signed by buyer
-  buyerAddress:  string,
+  paymentTxBlob: string, // Signed by buyer
+  buyerAddress: string,
   sellerAddress: string,
-  nftId:         string,
-  amountXrp:     number,
+  nftId: string,
+  amountXrp: number,
 ) {
   return await withClient(networkUrl, async (client) => {
-
     // Submit buyer's payment
-    const payResult = await client.request({ command: "submit", tx_blob: paymentTxBlob });
-    const payHash   = (payResult.result as any)["tx_json"]["hash"] as string;
+    const payResult = await client.request({
+      command: "submit",
+      tx_blob: paymentTxBlob,
+    });
+    const payHash = (payResult.result as any)["tx_json"]["hash"] as string;
     await waitForTransaction(client, payHash);
 
     // Load WASM
     const wasmHex = readFileSync(WASM_PATH).toString("hex").toUpperCase();
 
     // Fee: scale by WASM block count
-    const { sequence, medianFee, lastLedger } = await autofillBase(client, issuerWallet.address);
-    const txBlocks  = Math.ceil((wasmHex.length / 2 + 200) / 512);
-    const txFee     = String(Math.max(medianFee * txBlocks, 50000));
+    const { sequence, medianFee, lastLedger } = await autofillBase(
+      client,
+      issuerWallet.address,
+    );
+    const txBlocks = Math.ceil((wasmHex.length / 2 + 200) / 512);
+    const txFee = String(Math.max(medianFee * txBlocks, 50000));
 
     // CancelAfter: XRPL epoch = Unix - 946684800, plus 2-hour grace period
     const cancelAfter = Math.floor(Date.now() / 1000) - 946684800 + 7200;
 
     const escrowTx: Record<string, unknown> = {
-      TransactionType:    "EscrowCreate",
-      Account:            issuerWallet.address,
-      Destination:        sellerAddress,
-      Amount:             String(Math.round(amountXrp * 1_000_000)),
-      CancelAfter:        cancelAfter,
-      FinishFunction:     wasmHex,             // WASM bytecode as uppercase hex
-      Flags:              0,
-      Sequence:           sequence,
+      TransactionType: "EscrowCreate",
+      Account: issuerWallet.address,
+      Destination: sellerAddress,
+      Amount: String(Math.round(amountXrp * 1_000_000)),
+      CancelAfter: cancelAfter,
+      FinishFunction: wasmHex, // WASM bytecode as uppercase hex
+      Flags: 0,
+      Sequence: sequence,
       LastLedgerSequence: lastLedger,
-      Fee:                txFee,
-      NetworkID:          NETWORK_ID,
+      Fee: txFee,
+      NetworkID: NETWORK_ID,
       Memos: [
-        { Memo: { MemoType: toHex("BUYER"),  MemoData: toHex(buyerAddress) } },
+        { Memo: { MemoType: toHex("BUYER"), MemoData: toHex(buyerAddress) } },
         { Memo: { MemoType: toHex("NFT_ID"), MemoData: nftId.toUpperCase() } },
       ],
     };
@@ -668,6 +730,7 @@ function toHex(str: string): string {
 ### 5.5 Finalizing a Smart Escrow
 
 **Prerequisites:**
+
 - The buyer must already own the NFT (transfer must be complete and validated).
 - The WASM Hook checks live ledger state at execution time.
 
@@ -677,54 +740,78 @@ import { decodeAccountID } from "xrpl";
 
 async function finishEscrow(
   escrowSequence: number,
-  nftId:          string,
-  buyerAddress:   string,
+  nftId: string,
+  buyerAddress: string,
 ) {
   return await withClient(networkUrl, async (client) => {
-
     // Wait until NFT appears in buyer's validated account (up to 2 minutes)
     await waitForNFTInWallet(client, buyerAddress, nftId);
 
     // Sign the NFT_ID with the notary private key (secp256k1 ECDSA, DER output)
-    const msgHex        = nftId.toLowerCase();
-    const notaireSigHex = keypairs.sign(msgHex, notaireWallet.privateKey);  // DER signature
-    const notairePubHex = notaireWallet.publicKey;                          // 33-byte compressed
+    const msgHex = nftId.toLowerCase();
+    const notaireSigHex = keypairs.sign(msgHex, notaireWallet.privateKey); // DER signature
+    const notairePubHex = notaireWallet.publicKey; // 33-byte compressed
 
     // Oracle signs same message (can be a different key for true dual-sig)
-    const oracleSigHex  = keypairs.sign(msgHex, oracleWallet.privateKey);
-    const oraclePubHex  = oracleWallet.publicKey;
+    const oracleSigHex = keypairs.sign(msgHex, oracleWallet.privateKey);
+    const oraclePubHex = oracleWallet.publicKey;
 
     // Encode buyer address as 20-byte AccountID (binary, not base58)
     const buyerAccountIdHex = Buffer.from(decodeAccountID(buyerAddress))
       .toString("hex")
       .toUpperCase();
 
-    const { sequence, lastLedger } = await autofillBase(client, notaireWallet.address);
+    const { sequence, lastLedger } = await autofillBase(
+      client,
+      notaireWallet.address,
+    );
 
     const finishTx: Record<string, unknown> = {
-      TransactionType:    "EscrowFinish",
-      Account:            notaireWallet.address,  // Must match NOTARY_ACCOUNT in WASM
-      Owner:              issuerWallet.address,   // Account that created the escrow
-      OfferSequence:      escrowSequence,         // Sequence of the EscrowCreate tx
-      Flags:              0,
-      Sequence:           sequence,
+      TransactionType: "EscrowFinish",
+      Account: notaireWallet.address, // Must match NOTARY_ACCOUNT in WASM
+      Owner: issuerWallet.address, // Account that created the escrow
+      OfferSequence: escrowSequence, // Sequence of the EscrowCreate tx
+      Flags: 0,
+      Sequence: sequence,
       LastLedgerSequence: lastLedger,
-      Fee:                "2000000",              // 2M drops required for WASM execution
-      ComputationAllowance: 1000000,              // WASM execution budget
-      NetworkID:          NETWORK_ID,
+      Fee: "2000000", // 2M drops required for WASM execution
+      ComputationAllowance: 1000000, // WASM execution budget
+      NetworkID: NETWORK_ID,
       Memos: [
         // Memo[0]: NFT_ID — 32-byte token ID
-        { Memo: { MemoType: toHex("NFT_ID"),       MemoData: nftId.toUpperCase() } },
+        { Memo: { MemoType: toHex("NFT_ID"), MemoData: nftId.toUpperCase() } },
         // Memo[1]: NOTARY_SIG — DER secp256k1 signature of NFT_ID
-        { Memo: { MemoType: toHex("NOTARY_SIG"),   MemoData: notaireSigHex.toUpperCase() } },
+        {
+          Memo: {
+            MemoType: toHex("NOTARY_SIG"),
+            MemoData: notaireSigHex.toUpperCase(),
+          },
+        },
         // Memo[2]: NOTARY_PUBKEY — 33-byte compressed secp256k1 public key
-        { Memo: { MemoType: toHex("NOTARY_PUBKEY"), MemoData: notairePubHex.toUpperCase() } },
+        {
+          Memo: {
+            MemoType: toHex("NOTARY_PUBKEY"),
+            MemoData: notairePubHex.toUpperCase(),
+          },
+        },
         // Memo[3]: ORACLE_SIG — DER secp256k1 signature of NFT_ID
-        { Memo: { MemoType: toHex("ORACLE_SIG"),   MemoData: oracleSigHex.toUpperCase() } },
+        {
+          Memo: {
+            MemoType: toHex("ORACLE_SIG"),
+            MemoData: oracleSigHex.toUpperCase(),
+          },
+        },
         // Memo[4]: ORACLE_PUBKEY — 33-byte compressed secp256k1 public key
-        { Memo: { MemoType: toHex("ORACLE_PUBKEY"), MemoData: oraclePubHex.toUpperCase() } },
+        {
+          Memo: {
+            MemoType: toHex("ORACLE_PUBKEY"),
+            MemoData: oraclePubHex.toUpperCase(),
+          },
+        },
         // Memo[5]: BUYER_ADDR — 20-byte AccountID (NOT the base58 address string)
-        { Memo: { MemoType: toHex("BUYER_ADDR"),   MemoData: buyerAccountIdHex } },
+        {
+          Memo: { MemoType: toHex("BUYER_ADDR"), MemoData: buyerAccountIdHex },
+        },
       ],
     };
 
@@ -738,14 +825,14 @@ async function finishEscrow(
 
 **Memo layout summary:**
 
-| Index | MemoType | Content | Format |
-|-------|----------|---------|--------|
-| 0 | `NFT_ID` | NFToken ID | 64-char hex (32 bytes) |
-| 1 | `NOTARY_SIG` | ECDSA signature of NFT_ID | DER hex (~71-72 bytes) |
-| 2 | `NOTARY_PUBKEY` | Notary public key | 33-byte compressed secp256k1 hex |
-| 3 | `ORACLE_SIG` | ECDSA signature of NFT_ID | DER hex (~71-72 bytes) |
-| 4 | `ORACLE_PUBKEY` | Oracle public key | 33-byte compressed secp256k1 hex |
-| 5 | `BUYER_ADDR` | Buyer's AccountID | 20-byte binary, hex-encoded (uppercase) |
+| Index | MemoType        | Content                   | Format                                  |
+| ----- | --------------- | ------------------------- | --------------------------------------- |
+| 0     | `NFT_ID`        | NFToken ID                | 64-char hex (32 bytes)                  |
+| 1     | `NOTARY_SIG`    | ECDSA signature of NFT_ID | DER hex (~71-72 bytes)                  |
+| 2     | `NOTARY_PUBKEY` | Notary public key         | 33-byte compressed secp256k1 hex        |
+| 3     | `ORACLE_SIG`    | ECDSA signature of NFT_ID | DER hex (~71-72 bytes)                  |
+| 4     | `ORACLE_PUBKEY` | Oracle public key         | 33-byte compressed secp256k1 hex        |
+| 5     | `BUYER_ADDR`    | Buyer's AccountID         | 20-byte binary, hex-encoded (uppercase) |
 
 **Critical:** `BUYER_ADDR` must be the 20-byte binary AccountID, not the base58 address string. Use `decodeAccountID(address)` from xrpl.js to convert.
 
@@ -756,22 +843,25 @@ async function finishEscrow(
 Can only be submitted after the `CancelAfter` timestamp has passed:
 
 ```typescript
-const { sequence, medianFee, lastLedger } = await autofillBase(client, cancellerAddress);
+const { sequence, medianFee, lastLedger } = await autofillBase(
+  client,
+  cancellerAddress,
+);
 
 const cancelTx: Record<string, unknown> = {
-  TransactionType:    "EscrowCancel",
-  Account:            cancellerAddress,   // Buyer or issuer
-  Owner:              ownerAddress,       // Issuer (who created the EscrowCreate)
-  OfferSequence:      escrowSequence,     // Sequence of the EscrowCreate
-  Sequence:           sequence,
+  TransactionType: "EscrowCancel",
+  Account: cancellerAddress, // Buyer or issuer
+  Owner: ownerAddress, // Issuer (who created the EscrowCreate)
+  OfferSequence: escrowSequence, // Sequence of the EscrowCreate
+  Sequence: sequence,
   LastLedgerSequence: lastLedger,
-  Fee:                String(Math.max(medianFee, 12)),
-  NetworkID:          NETWORK_ID,
+  Fee: String(Math.max(medianFee, 12)),
+  NetworkID: NETWORK_ID,
 };
 
 // Sign with standard wallet.sign() — no custom fields needed
 const prepared = { ...cancelTx };
-const signed   = wallet.sign(prepared as any);
+const signed = wallet.sign(prepared as any);
 await client.submitAndWait(signed.tx_blob);
 ```
 
@@ -783,9 +873,9 @@ await client.submitAndWait(signed.tx_blob);
 
 ```typescript
 const response = await client.request({
-  command:      "account_objects",
-  account:      address,
-  type:         "escrow",
+  command: "account_objects",
+  account: address,
+  type: "escrow",
   ledger_index: "validated",
 });
 
@@ -798,10 +888,10 @@ const escrows = response.result.account_objects;
 ```typescript
 try {
   const entry = await client.request({
-    command:      "ledger_entry",
+    command: "ledger_entry",
     escrow: {
-      account:  ownerAddress,
-      seq:      escrowSequence,
+      account: ownerAddress,
+      seq: escrowSequence,
     },
     ledger_index: "validated",
   });
@@ -816,9 +906,10 @@ try {
 #### Decode Memos from an Escrow
 
 Memo values are hex-encoded:
+
 ```typescript
-const memo = escrow.Memos?.find((m: any) =>
-  Buffer.from(m.Memo.MemoType, "hex").toString("utf8") === "BUYER"
+const memo = escrow.Memos?.find(
+  (m: any) => Buffer.from(m.Memo.MemoType, "hex").toString("utf8") === "BUYER",
 );
 const buyerAddress = memo
   ? Buffer.from(memo.Memo.MemoData, "hex").toString("utf8")
@@ -846,12 +937,16 @@ async function waitForTransaction(
     } catch {
       // Transaction not yet known — keep polling
     }
-    delay = Math.min(delay * 2, 8000);  // Exponential backoff, cap at 8s
+    delay = Math.min(delay * 2, 8000); // Exponential backoff, cap at 8s
   }
-  throw new Error(`Transaction ${hash} not validated after ${timeoutMs / 1000}s`);
+  throw new Error(
+    `Transaction ${hash} not validated after ${timeoutMs / 1000}s`,
+  );
 }
 
-function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
 ```
 
 A transaction is **not final** until `validated === true`. Always wait for validation before proceeding.
@@ -865,26 +960,33 @@ async function waitForNFTInWallet(
   client: Client,
   address: string,
   nftId: string,
-  timeoutMs = 120000,  // 2 minutes default
+  timeoutMs = 120000, // 2 minutes default
 ): Promise<void> {
-  const deadline     = Date.now() + timeoutMs;
+  const deadline = Date.now() + timeoutMs;
   const normalizedId = nftId.toUpperCase();
   let delay = 2000;
 
   while (Date.now() < deadline) {
     const response = await client.request({
-      command:      "account_nfts",
-      account:      address,
+      command: "account_nfts",
+      account: address,
       ledger_index: "validated",
     });
     const nfts = (response.result as any)["account_nfts"] as any[];
 
-    if (nfts.some(n => (n["NFTokenID"] as string).toUpperCase() === normalizedId)) return;
+    if (
+      nfts.some(
+        (n) => (n["NFTokenID"] as string).toUpperCase() === normalizedId,
+      )
+    )
+      return;
 
     await sleep(delay);
-    delay = Math.min(delay * 1.5, 10000);  // 1.5x backoff, cap at 10s
+    delay = Math.min(delay * 1.5, 10000); // 1.5x backoff, cap at 10s
   }
-  throw new Error(`NFT ${nftId} not found in wallet ${address} after ${timeoutMs / 1000}s`);
+  throw new Error(
+    `NFT ${nftId} not found in wallet ${address} after ${timeoutMs / 1000}s`,
+  );
 }
 ```
 
@@ -1039,6 +1141,7 @@ if rc_check != 1 { return 0; }  // Invalid signature → block
 ### 6.7 Building & Deploying the Hook
 
 **Cargo.toml:**
+
 ```toml
 [package]
 name    = "my-contract"
@@ -1060,6 +1163,7 @@ strip         = true
 ```
 
 **Build (requires Rust 1.89.0):**
+
 ```bash
 rustup target add wasm32v1-none
 cargo +1.89.0 build --release --target wasm32v1-none
@@ -1067,6 +1171,7 @@ cargo +1.89.0 build --release --target wasm32v1-none
 ```
 
 **Or via Docker:**
+
 ```bash
 docker build -t my-hook .
 docker run --rm -v $(pwd):/output my-hook
@@ -1085,27 +1190,29 @@ XRPL Credentials are on-chain objects used to attest identity (KYC). They requir
 
 The same `customDefs` object from [Section 5.2](#52-custom-binary-codec-extension) adds:
 
-| Transaction | Type Code |
-|-------------|-----------|
-| `CredentialCreate` | 58 |
-| `CredentialAccept` | 59 |
-| `CredentialDelete` | 60 |
+| Transaction        | Type Code |
+| ------------------ | --------- |
+| `CredentialCreate` | 58        |
+| `CredentialAccept` | 59        |
+| `CredentialDelete` | 60        |
 
 And new fields: `Subject` (AccountID, nth: 24), `CredentialType` (Blob, nth: 31), `URI` (Blob, nth: 5).
 
 **Credential Type Encoding:**
+
 ```typescript
 import { convertStringToHex } from "xrpl";
 
-const CREDENTIAL_TYPE_KYC     = convertStringToHex("SWIYU_KYC");      // Identity
-const CREDENTIAL_TYPE_KYC_TAX = convertStringToHex("SWIYU_KYC_TAX");  // Tax attestation
+const CREDENTIAL_TYPE_KYC = convertStringToHex("SWIYU_KYC"); // Identity
+const CREDENTIAL_TYPE_KYC_TAX = convertStringToHex("SWIYU_KYC_TAX"); // Tax attestation
 ```
 
 Always use the hex representation of the credential type string in transactions.
 
 **Accepted Flag:**
+
 ```typescript
-const LSF_ACCEPTED = 0x00010000;  // Bit 16: credential has been accepted by subject
+const LSF_ACCEPTED = 0x00010000; // Bit 16: credential has been accepted by subject
 ```
 
 ---
@@ -1117,19 +1224,19 @@ The issuer creates a credential targeted at a subject:
 ```typescript
 const tx = {
   TransactionType: "CredentialCreate",
-  Account:         issuerWallet.address,   // Issuer creates it
-  Subject:         subjectAddress,         // Recipient's XRPL address
-  CredentialType:  CREDENTIAL_TYPE_KYC,   // Hex-encoded credential type string
+  Account: issuerWallet.address, // Issuer creates it
+  Subject: subjectAddress, // Recipient's XRPL address
+  CredentialType: CREDENTIAL_TYPE_KYC, // Hex-encoded credential type string
 };
 
 const prepared = await client.autofill(tx as any);
-const signed   = issuerWallet.sign(prepared as any);
-const result   = await client.submitAndWait(signed.tx_blob);
+const signed = issuerWallet.sign(prepared as any);
+const result = await client.submitAndWait(signed.tx_blob);
 
 // Handle: tecNO_TARGET → subject account doesn't exist; activate first (see Section 8.2)
 // Handle: tecDUPLICATE → credential already exists; treat as success (idempotent)
-const meta       = result.result.meta as any;
-const txResult   = meta["TransactionResult"] as string;
+const meta = result.result.meta as any;
+const txResult = meta["TransactionResult"] as string;
 if (txResult !== "tesSUCCESS" && txResult !== "tecDUPLICATE") {
   throw new Error(`CredentialCreate failed: ${txResult}`);
 }
@@ -1144,9 +1251,9 @@ The subject must explicitly accept the credential on-chain. Prepare the unsigned
 ```typescript
 const tx = {
   TransactionType: "CredentialAccept",
-  Account:         subjectAddress,          // Subject accepts
-  Issuer:          issuerWallet.address,    // Who issued it
-  CredentialType:  CREDENTIAL_TYPE_KYC,
+  Account: subjectAddress, // Subject accepts
+  Issuer: issuerWallet.address, // Who issued it
+  CredentialType: CREDENTIAL_TYPE_KYC,
 };
 
 const prepared = await client.autofill(tx as any);
@@ -1162,14 +1269,14 @@ The subject signs with their wallet and submits via `POST /api/nft/submit`. Once
 ```typescript
 const tx = {
   TransactionType: "CredentialDelete",
-  Account:         issuerWallet.address,
-  Subject:         subjectAddress,
-  CredentialType:  CREDENTIAL_TYPE_KYC,
+  Account: issuerWallet.address,
+  Subject: subjectAddress,
+  CredentialType: CREDENTIAL_TYPE_KYC,
 };
 
 const prepared = await client.autofill(tx as any);
-const signed   = issuerWallet.sign(prepared as any);
-const result   = await client.submitAndWait(signed.tx_blob);
+const signed = issuerWallet.sign(prepared as any);
+const result = await client.submitAndWait(signed.tx_blob);
 
 // tecNO_ENTRY → credential didn't exist; treat as success (idempotent delete)
 const txResult = (result.result.meta as any)?.["TransactionResult"];
@@ -1187,25 +1294,24 @@ const LSF_ACCEPTED = 0x00010000;
 
 async function checkCredentialStatus(
   subjectAddress: string,
-  credentialType: string,   // e.g., CREDENTIAL_TYPE_KYC
-  issuerAddress:  string,
+  credentialType: string, // e.g., CREDENTIAL_TYPE_KYC
+  issuerAddress: string,
 ): Promise<"accepted" | "pending_acceptance" | "none"> {
-
   return await withClient(networkUrl, async (client) => {
-
     // 1. Check subject's account — has subject accepted?
     const subjectRes = await client.request({
       command: "account_objects",
       account: subjectAddress,
-      type:    "credential",
+      type: "credential",
     });
     const subjectObjects = subjectRes.result.account_objects as any[];
 
-    const isAccepted = subjectObjects.some(obj =>
-      obj["LedgerEntryType"] === "Credential" &&
-      obj["Issuer"]          === issuerAddress &&
-      obj["CredentialType"]  === credentialType &&
-      ((obj["Flags"] as number) & LSF_ACCEPTED) !== 0
+    const isAccepted = subjectObjects.some(
+      (obj) =>
+        obj["LedgerEntryType"] === "Credential" &&
+        obj["Issuer"] === issuerAddress &&
+        obj["CredentialType"] === credentialType &&
+        ((obj["Flags"] as number) & LSF_ACCEPTED) !== 0,
     );
     if (isAccepted) return "accepted";
 
@@ -1213,15 +1319,16 @@ async function checkCredentialStatus(
     const issuerRes = await client.request({
       command: "account_objects",
       account: issuerAddress,
-      type:    "credential",
+      type: "credential",
     });
     const issuerObjects = issuerRes.result.account_objects as any[];
 
-    const isPending = issuerObjects.some(obj =>
-      obj["LedgerEntryType"] === "Credential" &&
-      obj["Subject"]         === subjectAddress &&
-      obj["CredentialType"]  === credentialType &&
-      ((obj["Flags"] as number) & LSF_ACCEPTED) === 0  // NOT yet accepted
+    const isPending = issuerObjects.some(
+      (obj) =>
+        obj["LedgerEntryType"] === "Credential" &&
+        obj["Subject"] === subjectAddress &&
+        obj["CredentialType"] === credentialType &&
+        ((obj["Flags"] as number) & LSF_ACCEPTED) === 0, // NOT yet accepted
     );
     if (isPending) return "pending_acceptance";
 
@@ -1230,11 +1337,11 @@ async function checkCredentialStatus(
 }
 ```
 
-| Status | Meaning |
-|--------|---------|
-| `"accepted"` | Credential exists in subject's `account_objects` with `LSF_ACCEPTED` set |
-| `"pending_acceptance"` | Credential exists in issuer's `account_objects` without `LSF_ACCEPTED` |
-| `"none"` | No credential found in either account |
+| Status                 | Meaning                                                                  |
+| ---------------------- | ------------------------------------------------------------------------ |
+| `"accepted"`           | Credential exists in subject's `account_objects` with `LSF_ACCEPTED` set |
+| `"pending_acceptance"` | Credential exists in issuer's `account_objects` without `LSF_ACCEPTED`   |
+| `"none"`               | No credential found in either account                                    |
 
 ---
 
@@ -1244,13 +1351,13 @@ async function checkCredentialStatus(
 
 ```typescript
 const response = await client.request({
-  command:      "account_info",
-  account:      address,
+  command: "account_info",
+  account: address,
   ledger_index: "validated",
 });
 
 const accountData = response.result.account_data as { Balance: string };
-const balanceXrp  = Number(accountData.Balance) / 1_000_000;  // drops → XRP
+const balanceXrp = Number(accountData.Balance) / 1_000_000; // drops → XRP
 ```
 
 If account doesn't exist, request throws with `error: "actNotFound"`.
@@ -1269,13 +1376,13 @@ async function activateAccount(
 ): Promise<void> {
   const payment = {
     TransactionType: "Payment",
-    Account:         funderWallet.address,
-    Destination:     targetAddress,
-    Amount:          "40000000",  // 40 XRP in drops (leaves ~30 XRP usable)
+    Account: funderWallet.address,
+    Destination: targetAddress,
+    Amount: "40000000", // 40 XRP in drops (leaves ~30 XRP usable)
   };
   const prepared = await client.autofill(payment as any);
-  const signed   = funderWallet.sign(prepared as any);
-  const result   = await client.submitAndWait(signed.tx_blob);
+  const signed = funderWallet.sign(prepared as any);
+  const result = await client.submitAndWait(signed.tx_blob);
 
   const txResult = (result.result.meta as any)?.["TransactionResult"];
   if (txResult !== "tesSUCCESS") {
@@ -1285,6 +1392,7 @@ async function activateAccount(
 ```
 
 **Usage pattern:**
+
 ```typescript
 try {
   await client.submitAndWait(signedCredentialCreate.tx_blob);
@@ -1313,8 +1421,13 @@ function toHex(str: string): string {
 }
 
 const memos = [
-  { Memo: { MemoType: toHex("BUYER"),  MemoData: toHex("rBuyer123...") } },
-  { Memo: { MemoType: toHex("NFT_ID"), MemoData: "000800002ABCDEF...".toUpperCase() } },
+  { Memo: { MemoType: toHex("BUYER"), MemoData: toHex("rBuyer123...") } },
+  {
+    Memo: {
+      MemoType: toHex("NFT_ID"),
+      MemoData: "000800002ABCDEF...".toUpperCase(),
+    },
+  },
 ];
 ```
 
@@ -1323,13 +1436,15 @@ const memos = [
 ```typescript
 function decodeMemo(memos: any[], type: string): string | null {
   const typeHex = Buffer.from(type, "utf8").toString("hex").toUpperCase();
-  const memo    = memos?.find((m: any) => m.Memo.MemoType?.toUpperCase() === typeHex);
+  const memo = memos?.find(
+    (m: any) => m.Memo.MemoType?.toUpperCase() === typeHex,
+  );
   if (!memo) return null;
   return Buffer.from(memo.Memo.MemoData, "hex").toString("utf8");
 }
 
 const buyerAddress = decodeMemo(escrow.Memos, "BUYER");
-const nftId        = decodeMemo(escrow.Memos, "NFT_ID");
+const nftId = decodeMemo(escrow.Memos, "NFT_ID");
 ```
 
 ### Encoding a Binary Value (e.g., AccountID)
@@ -1354,9 +1469,10 @@ const address = encodeAccountID(Buffer.from(hexValue, "hex") as any);
 ## 10. Fee Calculation
 
 ### Standard Transaction
+
 ```typescript
 const medianFee = Number((feeInfo.result as any)["drops"]["median_fee"]);
-const fee       = String(Math.max(medianFee, 12));  // minimum 12 drops
+const fee = String(Math.max(medianFee, 12)); // minimum 12 drops
 ```
 
 ### EscrowCreate with WASM FinishFunction
@@ -1364,23 +1480,25 @@ const fee       = String(Math.max(medianFee, 12));  // minimum 12 drops
 Fee scales with the size of the embedded WASM bytecode:
 
 ```typescript
-const wasmHex   = readFileSync(WASM_PATH).toString("hex");  // hex string
-const txBlocks  = Math.ceil((wasmHex.length / 2 + 200) / 512);  // (wasmBytes + overhead) / 512
-const escrowFee = String(Math.max(medianFee * txBlocks, 50000));  // minimum 50,000 drops
+const wasmHex = readFileSync(WASM_PATH).toString("hex"); // hex string
+const txBlocks = Math.ceil((wasmHex.length / 2 + 200) / 512); // (wasmBytes + overhead) / 512
+const escrowFee = String(Math.max(medianFee * txBlocks, 50000)); // minimum 50,000 drops
 ```
 
 ### EscrowFinish (executing WASM)
+
 ```typescript
-const finishFee = "2000000";  // Fixed 2,000,000 drops (~0.002 XRP)
+const finishFee = "2000000"; // Fixed 2,000,000 drops (~0.002 XRP)
 ```
 
 ### Ledger Reserve for WASM
+
 Each 500-byte block of WASM requires 1 owner reserve unit. The buyer must fund this overhead:
 
 ```typescript
-const wasmBytes       = readFileSync(WASM_PATH).length;
-const reserveBlocks   = Math.ceil(wasmBytes / 500);
-const reserveIncXrp   = serverInfo.result.info.validated_ledger.reserve_inc_xrp;
+const wasmBytes = readFileSync(WASM_PATH).length;
+const reserveBlocks = Math.ceil(wasmBytes / 500);
+const reserveIncXrp = serverInfo.result.info.validated_ledger.reserve_inc_xrp;
 const reserveOverhead = reserveBlocks * reserveIncXrp;
 ```
 
@@ -1391,7 +1509,7 @@ const reserveOverhead = reserveBlocks * reserveIncXrp;
 XRPL uses a different epoch than Unix: **January 1, 2000** instead of January 1, 1970.
 
 ```typescript
-const XRPL_EPOCH_OFFSET = 946684800;  // seconds from Unix epoch to XRPL epoch
+const XRPL_EPOCH_OFFSET = 946684800; // seconds from Unix epoch to XRPL epoch
 
 // Unix timestamp → XRPL timestamp
 function toXrplTime(unixSeconds: number): number {
@@ -1439,30 +1557,33 @@ function isPositiveInteger(v: unknown): v is number {
 
 ## 13. Error Codes Reference
 
-| Code | Category | Meaning | Recommended Handling |
-|------|----------|---------|----------------------|
-| `tesSUCCESS` | Success | Transaction applied | Proceed |
-| `terQUEUED` | Queued | Transaction queued for next ledger | Wait and poll |
-| `tecNO_TARGET` | Error | Destination account doesn't exist | Activate with 40 XRP Payment, then retry |
-| `tecDUPLICATE` | Error | Object already exists (credential) | Treat as success (idempotent) |
-| `tecNO_ENTRY` | Error | Object not found (delete on non-existent) | Treat as success (idempotent delete) |
-| `tecUNFUNDED_PAYMENT` | Error | Sender lacks funds | Top up account, then retry |
-| `terINSUF_FEE_B` | Error | Fee too low | Recalculate fee, retry |
-| `objectNotFound` | RPC Error | No offers for NFT (nft_sell_offers) | Return empty array |
-| `entryNotFound` | RPC Error | Ledger object doesn't exist | Object was already consumed/deleted |
-| `actNotFound` | RPC Error | Account doesn't exist | Account not yet funded |
+| Code                  | Category  | Meaning                                   | Recommended Handling                     |
+| --------------------- | --------- | ----------------------------------------- | ---------------------------------------- |
+| `tesSUCCESS`          | Success   | Transaction applied                       | Proceed                                  |
+| `terQUEUED`           | Queued    | Transaction queued for next ledger        | Wait and poll                            |
+| `tecNO_TARGET`        | Error     | Destination account doesn't exist         | Activate with 40 XRP Payment, then retry |
+| `tecDUPLICATE`        | Error     | Object already exists (credential)        | Treat as success (idempotent)            |
+| `tecNO_ENTRY`         | Error     | Object not found (delete on non-existent) | Treat as success (idempotent delete)     |
+| `tecUNFUNDED_PAYMENT` | Error     | Sender lacks funds                        | Top up account, then retry               |
+| `terINSUF_FEE_B`      | Error     | Fee too low                               | Recalculate fee, retry                   |
+| `objectNotFound`      | RPC Error | No offers for NFT (nft_sell_offers)       | Return empty array                       |
+| `entryNotFound`       | RPC Error | Ledger object doesn't exist               | Object was already consumed/deleted      |
+| `actNotFound`         | RPC Error | Account doesn't exist                     | Account not yet funded                   |
 
 **Checking engine result on submit:**
+
 ```typescript
-const result    = await client.request({ command: "submit", tx_blob });
+const result = await client.request({ command: "submit", tx_blob });
 const engResult = (result.result as any)["engine_result"] as string;
-const ok        = engResult.startsWith("tes") || engResult === "terQUEUED";
+const ok = engResult.startsWith("tes") || engResult === "terQUEUED";
 if (!ok) throw new Error(`Rejected: ${engResult}`);
 ```
 
-**Checking on submitAndWait:**
+**Checking on submitAndWait for the transac:**
+
 ```typescript
-const meta     = result.result.meta;
-const txResult = typeof meta === "object" ? (meta as any)["TransactionResult"] : meta;
+const meta = result.result.meta;
+const txResult =
+  typeof meta === "object" ? (meta as any)["TransactionResult"] : meta;
 if (txResult !== "tesSUCCESS") throw new Error(`Failed: ${txResult}`);
 ```
